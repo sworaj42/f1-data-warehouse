@@ -30,7 +30,7 @@ SUSTAINED_RATE = 500    # requests / hour
 PAGE_SIZE = 100
 
 # --- Backfill scope --------------------------------------------------------
-SEASON_START = int(os.getenv("SEASON_START", "2015"))
+SEASON_START = int(os.getenv("SEASON_START", "1994"))
 SEASON_END = int(os.getenv("SEASON_END", "2026"))  # 2026 in progress -> real new races for the incremental pipeline
 
 
