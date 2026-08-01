@@ -1,10 +1,16 @@
-"""Apply sql/oltp/*.sql migrations in order, tracked in a schema_migrations ledger.
+"""Apply SQL migrations in order, tracked in a schema_migrations ledger.
+
+Two targets, one per database. Each database keeps its own ledger, so applying the
+OLTP migrations never marks the OLAP ones as done.
 
 Safe to re-run: already-applied files are skipped, and each DDL file uses
-CREATE TABLE IF NOT EXISTS, so a re-run on an existing database is a no-op.
+CREATE TABLE IF NOT EXISTS (and ON CONFLICT DO NOTHING for seeded rows), so a
+re-run on an existing database is a no-op.
 
-    python scripts/run_migrations.py
+    python scripts/run_migrations.py                 # oltp (default)
+    python scripts/run_migrations.py --target olap
 """
+import argparse
 import logging
 import pathlib
 import sys
@@ -16,7 +22,11 @@ from etl.logging_config import setup_logging   # noqa: E402
 
 log = logging.getLogger(__name__)
 
-MIGRATIONS_DIR = config.BASE_DIR / "sql" / "oltp"
+# target -> (migrations directory, DSN factory)
+TARGETS = {
+    "oltp": (config.BASE_DIR / "sql" / "oltp", config.prod_dsn),
+    "olap": (config.BASE_DIR / "sql" / "olap", config.dw_dsn),
+}
 
 _LEDGER_DDL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -32,15 +42,18 @@ def _applied(conn) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
-def run():
+def run(target: str = "oltp"):
     setup_logging("migrations")
-    conn = db.get_conn()
+    migrations_dir, dsn = TARGETS[target]
+    log.info("target=%s db=%s dir=%s", target, dsn()["dbname"], migrations_dir)
+
+    conn = db.get_conn(dsn())
     try:
         with db.transaction(conn), conn.cursor() as cur:
             cur.execute(_LEDGER_DDL)
 
         done = _applied(conn)
-        files = sorted(MIGRATIONS_DIR.glob("*.sql"))
+        files = sorted(migrations_dir.glob("*.sql"))
         newly = 0
         for f in files:
             if f.name in done:
@@ -58,4 +71,7 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--target", choices=sorted(TARGETS), default="oltp",
+                        help="which database to migrate (default: oltp)")
+    run(parser.parse_args().target)

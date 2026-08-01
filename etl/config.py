@@ -39,12 +39,22 @@ def seasons():
     return range(SEASON_START, SEASON_END + 1)
 
 
-def prod_dsn():
-    """psycopg2 connection kwargs for the OLTP database (f1_prod)."""
+def _dsn(dbname: str) -> dict:
+    """psycopg2 connection kwargs. Only the database name differs between the two."""
     return dict(
         host=os.getenv("POSTGRES_HOST", "localhost"),
         port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("PROD_DB", "f1_prod"),
+        dbname=dbname,
         user=os.getenv("POSTGRES_USER", "f1"),
         password=os.getenv("POSTGRES_PASSWORD", "f1"),
     )
+
+
+def prod_dsn():
+    """OLTP database (f1_prod)."""
+    return _dsn(os.getenv("PROD_DB", "f1_prod"))
+
+
+def dw_dsn():
+    """Warehouse database (f1_dw). Created empty by docker/init/01_create_databases.sql."""
+    return _dsn(os.getenv("DW_DB", "f1_dw"))
