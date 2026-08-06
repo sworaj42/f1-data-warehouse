@@ -28,8 +28,8 @@ because the flags and status groupings are computed once at load time.
 |---|---|
 | API → raw JSON → `f1_prod` (3NF) | **Built, loaded, verified** |
 | `f1_prod` → `f1_dw` (star schema) | **Built, loaded, verified** |
-| Analytics views + indexes | Next |
-| Streamlit dashboard | Planned |
+| Analytics views + indexes | **Built, measured** |
+| Streamlit dashboard | **Built** |
 | Airflow orchestration | Planned |
 
 ---
@@ -78,6 +78,10 @@ docker compose up -d                                   # Postgres 16 on localhos
 # 3. warehouse schema, then load it from f1_prod (~2 seconds, no network)
 ./.venv/bin/python scripts/run_migrations.py --target olap
 ./.venv/bin/python scripts/pipeline.py --full-reload
+
+# 4. analytics views + indexes, then the dashboard
+./.venv/bin/python scripts/run_migrations.py --target analytics
+./.venv/bin/streamlit run dashboard/app.py            # http://localhost:8501
 ```
 
 Then connect DBeaver to `localhost:5433`, database `f1_dw`, user/password from `.env`.
@@ -163,6 +167,54 @@ the FIA restates weeks later actually corrects the warehouse row instead of bein
 
 ---
 
+## The analytics layer
+
+Six views in `sql/analytics/001_views.sql` back a two-page Streamlit dashboard. The dashboard
+issues `SELECT * FROM v_<name>` and nothing else — every aggregation is in the warehouse, and the
+pages filter the cached result in pandas.
+
+| View | Question | Technique |
+|---|---|---|
+| `v_season_kpis` | What does a season look like at a glance? | Flag sums — one scan, no `CASE` |
+| `v_constructor_season` | Is the sport competitive or dominated? | Season × constructor grain |
+| `v_championship_progression` | Who led the title race, and when did it turn? | `SUM() OVER (PARTITION BY season, driver ORDER BY round)` |
+| `v_driver_rolling_form` | Is a driver trending up or down? | `ROWS BETWEEN 4 PRECEDING AND CURRENT ROW` |
+| `v_reliability_trend` | Have cars got more reliable over 33 seasons? | Aggregate nested in a window |
+| `v_quali_vs_race` | Who gains places on Sunday? | Both facts joined on conformed dimensions |
+
+`v_constructor_season` is the sixth view and exists because the KPI cards need a season grain while
+the constructor chart needs a constructor grain. One view cannot be both without a `groupby` in the
+dashboard, which would defeat the purpose of having a warehouse.
+
+### What indexing actually did
+
+Four indexes, not the seven originally planned. All seven were built and measured; three were
+removed on the evidence, and `sql/analytics/002_indexes.sql` records each rejection with the
+measurement that caused it.
+
+| Query | Before | After | Change |
+|---|---:|---:|---:|
+| `MAX(race_date)` — the ETL watermark | 1.410 ms | 0.007 ms | **~200×** |
+| 30-day incremental lookback | 0.548 ms | 0.011 ms | **~50×** |
+| One driver's whole career | 0.164 ms | 0.019 ms | ~9× |
+| One constructor's history | 0.565 ms | 0.150 ms | ~4× |
+| `SELECT * FROM v_season_kpis` | 14.534 ms | 14.660 ms | none |
+| `SELECT * FROM v_quali_vs_race` | 13.405 ms | 14.005 ms | none |
+
+**The split is the finding.** Every selective query got dramatically faster; every view got nothing
+at all, because a view aggregates the whole fact and reads every row by definition. So the
+dashboard's responsiveness cannot come from indexes — it comes from `@st.cache_data`, and the
+measurement is why that design was chosen rather than assumed.
+
+Two predictions were wrong, which is the argument for measuring rather than reasoning:
+`idx_frr_race` looked redundant against the primary key's leading column but became the most-used
+index on the table (it is one column wide against the PK's two). And `idx_fq_race_driver` looked
+useful at 72 scans until `REINDEX` shrank the primary key from 512 kB to 264 kB — exactly its size.
+Its whole advantage was accumulated page-split bloat, so the fix was to reindex, not to keep a
+permanent second copy of the primary key in the write path.
+
+---
+
 ## Five decisions worth defending
 
 Full reasoning lives in `documentation/CLAUDE.md`.
@@ -228,8 +280,16 @@ etl/
   extract/jolpica.py        rate-limited API client (dual token bucket), raw JSON landing
   oltp/                     API -> f1_prod:  parse.py, load.py
   olap/                     f1_prod -> f1_dw: extract.py, transform.py, quality.py, load.py
+  analytics/001_views.sql   six views backing the dashboard
+  analytics/002_indexes.sql four measured indexes; three rejected, with the evidence
+dashboard/
+  app.py                    entry point; st.navigation over two pages
+  db.py                     cached engine + one loader per view; read-only connection
+  charts/                   one module per figure
+  screens/                  season.py, eras.py
 scripts/
-  run_migrations.py         --target {oltp,olap}; each DB keeps its own ledger
+  run_migrations.py         --target {oltp,olap,analytics}; each DB keeps its own ledger
+  explain_views.py          EXPLAIN ANALYZE harness; --label before / after
   backfill.py               API -> raw -> f1_prod; --smoke / --season
   pipeline.py               f1_prod -> f1_dw; --full-reload / incremental
   check_oltp.py             row counts + integrity checks; non-zero exit on FAIL

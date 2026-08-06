@@ -2,3 +2,10 @@ requests>=2.31
 psycopg2-binary>=2.9
 python-dotenv>=1.0
 pandas>=2.0
+
+# Dashboard. Altair is not listed because Streamlit already depends on it, so
+# the charts add no dependency of their own. SQLAlchemy is here because
+# Streamlit's caching model wants a pooled engine held by @st.cache_resource,
+# and pandas.read_sql only officially supports a SQLAlchemy connectable.
+streamlit>=1.40
+sqlalchemy>=2.0
