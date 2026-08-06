@@ -23,9 +23,14 @@ from etl.logging_config import setup_logging   # noqa: E402
 log = logging.getLogger(__name__)
 
 # target -> (migrations directory, DSN factory)
+# analytics shares f1_dw (and therefore its ledger) with olap. It is a separate target because it
+# is a separate kind of object: olap is structure the pipeline writes into, analytics is the
+# read layer the dashboard consumes. Keeping them apart means the star DDL can be re-read without
+# wading through view SQL.
 TARGETS = {
     "oltp": (config.BASE_DIR / "sql" / "oltp", config.prod_dsn),
     "olap": (config.BASE_DIR / "sql" / "olap", config.dw_dsn),
+    "analytics": (config.BASE_DIR / "sql" / "analytics", config.dw_dsn),
 }
 
 _LEDGER_DDL = """
