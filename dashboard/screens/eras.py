@@ -24,7 +24,23 @@ layout.compact()
 
 kpi_df = db.season_kpis()
 lo, hi = int(kpi_df["season"].min()), int(kpi_df["season"].max())
-season_range = st.sidebar.slider("Seasons", lo, hi, (lo, hi))
+form_df = db.driver_rolling_form()
+
+# Offer the drivers with the most starts first: a multiselect over all 177
+# participating drivers, alphabetical, is unusable.
+by_starts = form_df["driver_name"].value_counts().index.tolist()
+
+controls = st.columns([5, 1], vertical_alignment="center")
+with controls[1].popover("Filters", icon=":material/tune:", width="stretch"):
+    season_range = st.slider("Seasons", lo, hi, (lo, hi))
+    drivers = st.multiselect(
+        "Drivers", by_starts, default=by_starts[:3],
+        help="Ordered by career starts within 1994-2026.",
+    )
+controls[0].caption(
+    f"{lo}-{hi} · {len(by_starts)} participating drivers · outcomes counted as status "
+    "groups, not points, which is what makes them comparable across eras."
+)
 
 st.subheader(
     "Reliability trend",
@@ -36,16 +52,6 @@ st.subheader(
 )
 reliability.render(db.reliability_trend(), season_range)
 
-form_df = db.driver_rolling_form()
-
-# Offer the drivers with the most starts first: a multiselect over all 177
-# participating drivers, alphabetical, is unusable.
-by_starts = form_df["driver_name"].value_counts().index.tolist()
-drivers = st.sidebar.multiselect(
-    "Drivers", by_starts, default=by_starts[:3],
-    help="Ordered by career starts within 1994-2026.",
-)
-
 st.subheader(
     "Driver rolling form",
     help="Five-race moving average of finishing position, ordered by date so form carries "
@@ -56,4 +62,4 @@ st.subheader(
 if drivers:
     rolling_form.render(form_df, drivers, season_range)
 else:
-    st.info("Pick at least one driver in the sidebar.")
+    st.info("Pick at least one driver in Filters.")

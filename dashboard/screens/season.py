@@ -3,8 +3,9 @@
 Note what is absent from this file: any SQL. Every figure reads a cached DataFrame
 from db.py and filters it in pandas, so changing the season issues no query at all.
 
-Also absent: st.title. The sidebar nav already names the page, and the duplicate
-heading cost ~80px of the vertical budget this page has to fit inside.
+Also absent: st.title and st.sidebar. The top nav names the page, and the controls
+live in a popover that shares a row with the era caption -- so the filters cost no
+vertical space, which is what makes the top bar affordable at all.
 
 Chart captions live in the `help=` tooltip on each subheader rather than as text
 below the chart. The caveats are the most defensible thing on the page so they are
@@ -25,16 +26,22 @@ from charts import championship, constructors, kpis, race_craft    # noqa: E402
 
 layout.compact()
 
-# Every figure on this page is driven by this single control.
 kpi_df = db.season_kpis()
 seasons = sorted(kpi_df["season"].tolist(), reverse=True)
-season = st.sidebar.selectbox("Season", seasons, index=0)
-# Capped at 8, not arbitrarily: the chart's legend needs ~28px per driver and the
-# chart is 250px tall, so a 9th entry is silently dropped rather than shown. A
-# control that lies about what it did is worse than a lower limit.
-top_n = st.sidebar.slider("Drivers on the championship chart", 3, 8, 8)
 
-kpis.render(kpi_df, season)
+# Widgets are declared inside the popover but their values are read here, so every
+# figure below still reads one control. st.popover returns a container; the widgets
+# inside it survive reruns exactly like sidebar widgets did.
+controls = st.columns([5, 1], vertical_alignment="center")
+with controls[1].popover("Filters", icon=":material/tune:", width="stretch"):
+    season = st.selectbox("Season", seasons, index=0)
+    # Capped at 8, not arbitrarily: the championship legend needs ~28px per driver
+    # against a 230px chart, so a 9th entry is silently dropped rather than shown.
+    # A control that lies about what it did is worse than a lower limit.
+    top_n = st.slider("Drivers on the championship chart", 3, 8, 8)
+
+era_note = kpis.render(kpi_df, season)
+controls[0].caption(era_note)
 
 st.subheader(
     "Championship progression",

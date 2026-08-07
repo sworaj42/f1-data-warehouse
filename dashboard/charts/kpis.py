@@ -45,10 +45,12 @@ def render(kpis, season):
              "because retirements free up positions ahead of everyone still running.",
     )
 
-    # The era caveat, surfaced in the UI rather than buried in a column comment.
-    # The scoring system changed four times across 1994-2026, so a points total is
-    # only meaningful against other seasons in the same band.
-    st.caption(
+    # Returned rather than rendered: the page composes this beside the Filters
+    # popover so the two share one row. This module draws cards; the page owns
+    # layout. The caveat itself is the era one -- the scoring system changed four
+    # times across 1994-2026, so a points total only means something against other
+    # seasons in the same band.
+    return (
         f"{row['points_era']} scoring era · {int(row['result_rows'])} result rows · "
         f"pole converted to a win {row['pole_to_win_pct']:.0f}% of the time. "
         "Points compare within an era only; the flag-based figures compare across all 33 seasons."

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 40" width="220" height="40" role="img" aria-label="F1 Warehouse">
+  <!-- Drawn here rather than sourced: the F1 wordmark and team badges are registered
+       trademarks and this repo is public. A chequered flag carries the same meaning. -->
+  <g>
+    <rect x="0"  y="8"  width="8" height="8" fill="#E8E8E8"/>
+    <rect x="8"  y="16" width="8" height="8" fill="#E8E8E8"/>
+    <rect x="16" y="8"  width="8" height="8" fill="#E8E8E8"/>
+    <rect x="0"  y="24" width="8" height="8" fill="#E8E8E8"/>
+    <rect x="16" y="24" width="8" height="8" fill="#E8E8E8"/>
+    <rect x="8"  y="8"  width="8" height="8" fill="#C0392B"/>
+    <rect x="0"  y="16" width="8" height="8" fill="#C0392B"/>
+    <rect x="16" y="16" width="8" height="8" fill="#C0392B"/>
+    <rect x="8"  y="24" width="8" height="8" fill="#C0392B"/>
+  </g>
+  <text x="32" y="27" font-family="Inter, Helvetica, Arial, sans-serif"
+        font-size="18" font-weight="700" fill="#E8E8E8">F1 Warehouse</text>
+</svg>

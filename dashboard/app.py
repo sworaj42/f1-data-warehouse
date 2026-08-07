@@ -7,17 +7,22 @@ warehouse answers real questions, not to do any data work of its own: it issues
 SELECT * FROM v_<name> and nothing else, and every aggregation lives in
 sql/analytics/001_views.sql.
 
-Pages are declared explicitly with st.navigation rather than discovered from a
-pages/ directory, so they can be named properly and kept in a screens/ directory
-that does not read as "SQL views".
+Navigation sits along the TOP rather than in a sidebar. The sidebar was measured
+at 300px -- 20.8% of a 1440px window -- to hold two widgets and a two-item nav
+list, and the charts that most needed the space are horizontal bar charts whose
+category labels truncate first. Moving the nav up returns ~260px of width to
+every figure. The cost is vertical, which is the scarcer budget here, so the
+per-page filters live in a popover that shares a row with the era caption rather
+than taking a row of their own.
 """
 import pathlib
 import sys
 
 import streamlit as st
 
-# Lets screens/ and charts/ import `db` and `charts.*` by name.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+# Lets screens/ and charts/ import `db`, `layout` and `charts.*` by name.
+BASE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE))
 
 st.set_page_config(
     page_title="F1 Data Warehouse",
@@ -25,9 +30,12 @@ st.set_page_config(
     layout="wide",
 )
 
+# Our own mark, not the F1 wordmark -- see assets/logo.svg for why.
+st.logo(str(BASE / "assets" / "logo.svg"), size="large")
+
 pages = [
     st.Page("screens/season.py", title="Season", icon="🏁", default=True),
     st.Page("screens/eras.py", title="Eras & Form", icon="📈"),
 ]
 
-st.navigation(pages).run()
+st.navigation(pages, position="top").run()

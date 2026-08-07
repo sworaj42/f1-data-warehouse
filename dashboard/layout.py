@@ -35,21 +35,25 @@ import streamlit as st
 # driver, so at 8 drivers it needs >=224px or Vega silently truncates the list.
 # That truncation is what pushed an earlier version to direct line labels, which
 # then overlapped badly whenever drivers were close on points. Height solves both.
-CHAMPIONSHIP_HEIGHT = 250
-ROW2_HEIGHT = 190
-FULL_WIDTH_HEIGHT = 292   # page 2: two stacked charts, no KPI row to make room for
+CHAMPIONSHIP_HEIGHT = 230
+ROW2_HEIGHT = 215         # 160 dropped most bar labels; the top bar freed the room
+FULL_WIDTH_HEIGHT = 300   # page 2: two stacked charts, no KPI row to make room for
 
 _CSS = """
 <style>
-  /* Streamlit's header is FIXED and overlays the content -- the default 6rem top
-     padding exists to clear it, not to look airy. Simply shrinking that padding
-     slides the KPI row underneath the toolbar, where it is silently clipped:
-     caught only by zooming into a screenshot, since the DOM still reports the
-     labels as present and visible. Hide the header (it holds only Deploy and the
-     hamburger, neither of which belongs in a presentation) and the space is
-     genuinely reclaimed rather than merely overdrawn. */
-  [data-testid="stHeader"] { display: none !important; }
-  .block-container { padding-top: 1rem !important; padding-bottom: 0.25rem !important; }
+  /* Do NOT hide stHeader. An earlier version did, because the header is fixed and
+     overlays content, and the default 6rem top padding exists to clear it rather
+     than to look airy -- shrinking that padding alone slides the KPI row under the
+     toolbar where it is silently clipped (the DOM still reports the labels visible;
+     only a zoomed screenshot showed it). But st.navigation(position="top") renders
+     the page tabs INSIDE stHeader, so hiding it deletes the navigation itself.
+     Instead: keep the header, and just trim its padding and the block padding. */
+     The header measures 60px with the nav in it, so block padding-top must CLEAR
+     that or the first row renders on top of the page tabs -- which looked exactly
+     like "the navigation is missing" until the DOM showed the links present at
+     y=0-60 with content starting at y=41. 4rem = 64px, just past it. */
+  [data-testid="stHeader"] { height: auto !important; }
+  .block-container { padding-top: 4rem !important; padding-bottom: 0.25rem !important; }
   /* Tighten the gap between a subheader and the chart under it. */
   .block-container h3 { margin-bottom: 0.1rem !important; padding-top: 0.4rem !important;
                         font-size: 1.15rem !important; }
