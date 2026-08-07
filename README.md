@@ -180,7 +180,17 @@ pages filter the cached result in pandas.
 | `v_championship_progression` | Who led the title race, and when did it turn? | `SUM() OVER (PARTITION BY season, driver ORDER BY round)` |
 | `v_driver_rolling_form` | Is a driver trending up or down? | `ROWS BETWEEN 4 PRECEDING AND CURRENT ROW` |
 | `v_reliability_trend` | Have cars got more reliable over 33 seasons? | Aggregate nested in a window |
-| `v_quali_vs_race` | Who gains places on Sunday? | Both facts joined on conformed dimensions |
+| `v_quali_vs_race` | Both facts on their shared grain | `INNER JOIN` on `(race_key, driver_key)` |
+| `v_driver_race_craft` | Who *actually* gains places on Sunday? | Residual against a per-grid-slot baseline |
+
+`v_driver_race_craft` is the one worth a second look. Plotting places gained directly is nearly
+meaningless: averaged over 2020–2026 it runs **−1.2 at pole and +5.3 from P20**, perfectly
+monotonic, because pole cannot gain a place and last cannot lose one. So a raw ranking mostly sorts
+drivers by how slow their car is over one lap. Subtracting par for the grid slot leaves the part the
+driver and team own — and it reorders the field, which is the test that it does something: Pérez in
+2026 falls from **+4.14 raw to +0.49 adjusted**, while Hamilton rises to **+1.76** from slots that
+normally lose places. The residuals sum to exactly zero within a season, so the baseline checks
+itself.
 
 `v_constructor_season` is the sixth view and exists because the KPI cards need a season grain while
 the constructor chart needs a constructor grain. One view cannot be both without a `groupby` in the
