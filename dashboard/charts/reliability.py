@@ -12,9 +12,17 @@ points -- "retired with a gearbox failure" means the same thing in 1994 as in
 import altair as alt
 import streamlit as st
 
+import layout
+
 # Finished at the bottom, failures stacked above it, so the growing/shrinking
 # band of colour reads as "how much went wrong".
 GROUP_ORDER = ["Finished", "Lapped", "Other", "Accident DNF", "Mechanical DNF"]
+
+# Explicit colours rather than a named scheme. A diverging scheme assigned red to
+# "Finished" and blue to "Mechanical DNF" -- correct as a gradient, exactly backwards
+# as meaning, on a chart whose entire subject is failure. Here cool = the car
+# finished, warm = it did not, and grey is the small non-mechanical remainder.
+GROUP_COLOURS = ["#2E86C1", "#85C1E9", "#95A5A6", "#E67E22", "#C0392B"]
 
 
 def render(reliability, season_range):
@@ -30,7 +38,7 @@ def render(reliability, season_range):
             y=alt.Y("pct_of_season:Q", title="Share of results (%)",
                     stack="normalize", axis=alt.Axis(format="%")),
             color=alt.Color("status_group:N", title="Outcome", sort=GROUP_ORDER,
-                            scale=alt.Scale(scheme="redyellowblue")),
+                            scale=alt.Scale(domain=GROUP_ORDER, range=GROUP_COLOURS)),
             order=alt.Order("color_status_group_sort_index:Q"),
             tooltip=[
                 alt.Tooltip("season:O", title="Season"),
@@ -39,7 +47,7 @@ def render(reliability, season_range):
                 alt.Tooltip("pct_of_season:Q", title="Share of season (%)"),
             ],
         )
-        .properties(height=420)
+        .properties(height=layout.FULL_WIDTH_HEIGHT)
     )
     st.altair_chart(chart, width="stretch")
 
@@ -50,19 +58,10 @@ def render(reliability, season_range):
         failures = rows[~rows["status_group"].isin(["Finished", "Lapped"])]
         return 100 * failures["status_rows"].sum() / rows["status_rows"].sum()
 
+    # One line, because it is the headline finding of the whole project and stating
+    # it costs less vertical space than making the reader compute it off the axis.
+    # The reason it sits above the DNF-rate KPI card is in the subheader tooltip.
     st.caption(
-        f"Cars that did not complete the race: {retirement_share(lo):.1f}% in {lo}, "
-        f"{retirement_share(hi):.1f}% in {hi}. "
-        "This counts status groups, not points, which is what makes it comparable "
-        "across eras at all."
-    )
-    # Worth stating rather than hiding: this figure runs 1-2 points above the DNF-rate
-    # KPI card, and the two are measuring different things. is_dnf means "no finishing
-    # position"; this means "retired". Around 250 rows are both retired AND classified,
-    # because a driver who completes 90% of the distance is classified even if the car
-    # stops. Neither number is wrong; they answer different questions.
-    st.caption(
-        ":grey[Runs slightly above the DNF-rate KPI: that card counts cars with no "
-        "finishing position, while this counts retirements. A car retiring after 90% "
-        "distance is still classified, so it appears here but not there.]"
+        f"Cars that did not complete the race: **{retirement_share(lo):.1f}%** in {lo} → "
+        f"**{retirement_share(hi):.1f}%** in {hi}."
     )

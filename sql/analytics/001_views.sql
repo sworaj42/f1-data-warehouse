@@ -12,8 +12,24 @@
 -- needs a NULL FK, and it is not a season.
 --
 -- CREATE OR REPLACE throughout, so re-applying this file is safe. Note that run_migrations.py
--- skips files already in schema_migrations -- while iterating on view SQL, apply this file
--- directly with psql rather than through the runner.
+-- skips files already in schema_migrations -- while iterating on view SQL, delete the ledger row
+-- or apply this file directly with psql rather than through the runner.
+--
+-- The DROP block below is load-bearing, not defensive tidying. CREATE OR REPLACE VIEW can only
+-- APPEND columns: it refuses to rename or remove one ("cannot change name of view column"). So a
+-- file that only ever uses OR REPLACE is re-runnable exactly until the first column is renamed,
+-- and then it fails. Dropping first makes the file genuinely re-runnable.
+--
+-- Reverse dependency order, and deliberately WITHOUT CASCADE -- v_driver_race_craft is built on
+-- v_quali_vs_race, so the order matters, and if anything else ever comes to depend on these the
+-- migration should fail loudly rather than silently drop it.
+DROP VIEW IF EXISTS v_driver_race_craft;
+DROP VIEW IF EXISTS v_quali_vs_race;
+DROP VIEW IF EXISTS v_reliability_trend;
+DROP VIEW IF EXISTS v_driver_rolling_form;
+DROP VIEW IF EXISTS v_championship_progression;
+DROP VIEW IF EXISTS v_constructor_season;
+DROP VIEW IF EXISTS v_season_kpis;
 
 
 -- Season at a glance. Grain: one row per season (33 rows).
@@ -28,7 +44,11 @@ SELECT
     COUNT(DISTINCT f.driver_key)                        AS drivers,
     COUNT(DISTINCT f.constructor_key)                   AS constructors,
     COUNT(*)                                            AS result_rows,
-    SUM(f.is_winner::INT)                               AS wins_recorded,
+    -- NOT a count of wins: SUM(is_winner) is identical to races in all 33 seasons, because every
+    -- race has exactly one winner. It was a KPI card until that was measured, and it told nobody
+    -- anything. How many DIFFERENT drivers won is the question that has an answer -- 8 in 2003,
+    -- 3 in 2023 -- and it counts a flag, so it is comparable across every era.
+    COUNT(DISTINCT f.driver_key) FILTER (WHERE f.is_winner) AS distinct_winners,
     ROUND(100.0 * SUM(f.is_dnf::INT) / COUNT(*), 1)     AS dnf_rate_pct,
     -- AVG ignores NULL, and positions_gained is NULL exactly for DNFs and pit-lane starts, so this
     -- is correct with no filter in the dashboard query.
@@ -236,3 +256,60 @@ JOIN dim_status      s  ON s.status_key      = frr.status_key
 WHERE r.season <> -1;
 
 COMMENT ON VIEW v_quali_vs_race IS 'Grain: driver x race, both facts joined on (race_key, driver_key). The concrete payoff of the fact-constellation design. INNER JOIN drops results with no qualifying row and qualifiers who did not start.';
+
+
+-- Race craft: who actually gains places, once you subtract the places their grid slot hands them.
+-- Grain: one row per driver per season.
+--
+-- WHY THIS EXISTS. Plotting places gained directly is close to meaningless, and it is worth being
+-- able to say why. Averaged over 2020-2026 the places gained by grid slot is perfectly monotonic:
+--
+--     qualified P1  -> -1.2      qualified P10 -> +0.3      qualified P20 -> +5.3
+--
+-- It could not be otherwise: pole cannot gain a place and last cannot lose one. So a raw "places
+-- gained" ranking mostly sorts drivers by how slow their car is in qualifying, and a scatter of
+-- quali against finish mostly draws that constraint rather than anything about racing.
+--
+-- Subtracting the average gain FOR THAT GRID SLOT removes it. What is left is the part the driver
+-- and the team are responsible for. Verified on the loaded warehouse: Perez 2026 gains +4.14
+-- places a race, which looks outstanding until par for his grid slots turns out to be +3.66,
+-- leaving +0.49. Hamilton is the mirror image -- he qualifies well, so par for his slots is
+-- NEGATIVE (-0.96), and he still gains, which is +1.76 and top of the field.
+--
+-- Built on v_quali_vs_race rather than on the facts, so the two-fact join is defined once and this
+-- view inherits it.
+CREATE OR REPLACE VIEW v_driver_race_craft AS
+WITH classified AS (
+    -- A DNF has no finishing position, so there is no gain or loss to measure.
+    SELECT
+        season,
+        driver_key,
+        driver_name,
+        quali_position,
+        quali_position - finish_position AS places_gained
+    FROM v_quali_vs_race
+    WHERE finish_position IS NOT NULL
+),
+expected AS (
+    -- Par for each grid slot, computed WITHIN a season. Field size and the circuit mix are
+    -- constant inside a season and emphatically not across 33 of them -- 1994 had 26 entries
+    -- against 20 today, so P20 means something different in each.
+    SELECT season, quali_position, AVG(places_gained) AS expected_gain
+    FROM classified
+    GROUP BY season, quali_position
+)
+SELECT
+    c.season,
+    c.driver_key,
+    c.driver_name,
+    COUNT(*)                                          AS races,
+    ROUND(AVG(c.places_gained), 2)                    AS avg_places_gained,
+    ROUND(AVG(e.expected_gain), 2)                    AS expected_places_gained,
+    ROUND(AVG(c.places_gained - e.expected_gain), 2)  AS places_vs_expected
+FROM classified c
+JOIN expected e USING (season, quali_position)
+-- No constructor_name: drivers change team mid-season, so it is not functionally dependent on
+-- (season, driver) and carrying it here would silently duplicate rows.
+GROUP BY c.season, c.driver_key, c.driver_name;
+
+COMMENT ON VIEW v_driver_race_craft IS 'Grain: season x driver. places_vs_expected is places gained minus the season average for that grid slot, which removes the arithmetic that pole cannot gain and last cannot lose. The residuals sum to zero within a season by construction -- a self-checking property.';

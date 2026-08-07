@@ -1,0 +1,60 @@
+"""Shared layout tuning, so both screens fit a laptop viewport without scrolling.
+
+Streamlit ships a ~6rem top padding on the main block, which is generous for a
+document and expensive for a dashboard: it is roughly 90px of nothing above the
+first KPI card. Reclaiming it, plus dropping the per-page st.title that duplicates
+the sidebar nav label, is most of the difference between "scrolls" and "fits".
+
+These numbers are MEASURED in the browser, not estimated. The first attempt was
+estimated and was wrong by 257px, almost all of it in one place: st.metric with
+border=True and a sparkline renders a 188px row, not the ~85px a plain metric row
+takes. Measuring is why the sparklines are gone.
+
+Measured budget for page 1 (1440x729 viewport, Chrome):
+
+    top padding             8
+    KPI row (plain)        85
+    era caption            25
+    subheader + chart      35 + CHAMPIONSHIP_HEIGHT
+    subheader + 2 charts   35 + ROW2_HEIGHT
+    bottom padding         16
+    ---------------------------
+    total                ~660px against a 729px viewport
+
+Verify with, in the browser console:
+
+    document.querySelector('.block-container').getBoundingClientRect().height
+
+If it scrolls on the presenting machine, drop ROW2_HEIGHT first -- the lower two
+charts carry less detail than the championship line.
+"""
+import streamlit as st
+
+CHAMPIONSHIP_HEIGHT = 210
+ROW2_HEIGHT = 187
+FULL_WIDTH_HEIGHT = 265   # page 2: two stacked charts, no KPI row to make room for
+
+_CSS = """
+<style>
+  /* Streamlit's header is FIXED and overlays the content -- the default 6rem top
+     padding exists to clear it, not to look airy. Simply shrinking that padding
+     slides the KPI row underneath the toolbar, where it is silently clipped:
+     caught only by zooming into a screenshot, since the DOM still reports the
+     labels as present and visible. Hide the header (it holds only Deploy and the
+     hamburger, neither of which belongs in a presentation) and the space is
+     genuinely reclaimed rather than merely overdrawn. */
+  [data-testid="stHeader"] { display: none !important; }
+  .block-container { padding-top: 1rem !important; padding-bottom: 0.25rem !important; }
+  /* Tighten the gap between a subheader and the chart under it. */
+  .block-container h3 { margin-bottom: 0.1rem !important; padding-top: 0.4rem !important;
+                        font-size: 1.15rem !important; }
+  /* The metric row is the single densest thing on the page; shrink its label. */
+  [data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
+  [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
+</style>
+"""
+
+
+def compact():
+    """Apply the density tweaks. Call once at the top of each screen."""
+    st.markdown(_CSS, unsafe_allow_html=True)

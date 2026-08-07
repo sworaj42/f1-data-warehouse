@@ -15,6 +15,8 @@ rather than hiding it.
 import altair as alt
 import streamlit as st
 
+import layout
+
 
 def render(rolling_form, drivers, season_range):
     lo, hi = season_range
@@ -51,13 +53,6 @@ def render(rolling_form, drivers, season_range):
                 alt.Tooltip("races_in_window:Q", title="Classified in window"),
             ],
         )
-        .properties(height=420)
+        .properties(height=layout.FULL_WIDTH_HEIGHT)
     )
     st.altair_chart(chart, width="stretch")
-
-    thin = int((window["races_in_window"] < 5).sum())
-    st.caption(
-        f"{len(window)} points plotted. {thin} rest on fewer than five classified "
-        "races because of retirements in the window, and are drawn faded — the "
-        "average is still correct, it is just carrying less evidence."
-    )

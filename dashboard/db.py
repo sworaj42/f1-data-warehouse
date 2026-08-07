@@ -40,6 +40,7 @@ VIEWS = (
     "v_driver_rolling_form",
     "v_reliability_trend",
     "v_quali_vs_race",
+    "v_driver_race_craft",
 )
 
 
@@ -118,4 +119,10 @@ def reliability_trend() -> pd.DataFrame:
 
 
 def quali_vs_race() -> pd.DataFrame:
+    """The raw two-fact join. Kept loadable for ad-hoc inspection; the dashboard
+    plots v_driver_race_craft, which is built on top of it."""
     return load_view("v_quali_vs_race")
+
+
+def driver_race_craft() -> pd.DataFrame:
+    return load_view("v_driver_race_craft")

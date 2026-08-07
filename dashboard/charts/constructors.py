@@ -11,6 +11,8 @@ arise: every team on this chart scored under the same rules.
 import altair as alt
 import streamlit as st
 
+import layout
+
 
 def render(constructor_season, season):
     season_df = constructor_season[constructor_season["season"] == season]
@@ -34,11 +36,9 @@ def render(constructor_season, season):
                 alt.Tooltip("entries:Q", title="Car entries"),
             ],
         )
-        .properties(height=max(240, 22 * len(season_df)))
+        # Fixed height, matching the chart beside it, so the two columns stay level.
+        # Older seasons ran more teams; Altair compresses the bars rather than
+        # growing the page, which is the trade this layout wants.
+        .properties(height=layout.ROW2_HEIGHT)
     )
     st.altair_chart(chart, width="stretch")
-
-    top_share = 100 * season_df["points"].max() / season_df["points"].sum()
-    st.caption(
-        f"The leading team took {top_share:.0f}% of all points scored in {season}."
-    )
