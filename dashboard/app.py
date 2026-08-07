@@ -38,4 +38,7 @@ pages = [
     st.Page("screens/eras.py", title="Eras & Form", icon="📈"),
 ]
 
-st.navigation(pages, position="top").run()
+# position="hidden": the page switcher is drawn in the page body by
+# layout.page_header(), so the heading, filters and tabs read as one block
+# rather than the tabs living in Streamlit's own chrome.
+st.navigation(pages, position="hidden").run()

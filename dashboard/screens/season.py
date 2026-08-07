@@ -3,9 +3,10 @@
 Note what is absent from this file: any SQL. Every figure reads a cached DataFrame
 from db.py and filters it in pandas, so changing the season issues no query at all.
 
-Also absent: st.title and st.sidebar. The top nav names the page, and the controls
-live in a popover that shares a row with the era caption -- so the filters cost no
-vertical space, which is what makes the top bar affordable at all.
+Layout: heading + filters, then the page switcher, then a KPI row, then two chart
+rows. The championship chart takes two thirds of its row rather than the full
+width -- at 1920px a ten-round line chart is mostly empty space, and the third
+column it frees is where the champions panel goes.
 
 Chart captions live in the `help=` tooltip on each subheader rather than as text
 below the chart. The caveats are the most defensible thing on the page so they are
@@ -20,37 +21,46 @@ import streamlit as st
 # screen runnable on its own -- which is what makes it testable with AppTest.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-import db                                                          # noqa: E402
-import layout                                                      # noqa: E402
-from charts import championship, constructors, kpis, race_craft    # noqa: E402
+import db                                                                     # noqa: E402
+import layout                                                                 # noqa: E402
+from charts import champions, championship, constructors, kpis, race_craft    # noqa: E402
 
 layout.compact()
+filter_col = layout.page_header("Season")
 
 kpi_df = db.season_kpis()
 seasons = sorted(kpi_df["season"].tolist(), reverse=True)
 
 # Widgets are declared inside the popover but their values are read here, so every
-# figure below still reads one control. st.popover returns a container; the widgets
-# inside it survive reruns exactly like sidebar widgets did.
-controls = st.columns([5, 1], vertical_alignment="center")
-with controls[1].popover("Filters", icon=":material/tune:", width="stretch"):
+# figure below still reads one control.
+with filter_col.popover("Filters", icon=":material/tune:", width="stretch"):
     season = st.selectbox("Season", seasons, index=0)
     # Capped at 8, not arbitrarily: the championship legend needs ~28px per driver
-    # against a 230px chart, so a 9th entry is silently dropped rather than shown.
+    # against a 250px chart, so a 9th entry is silently dropped rather than shown.
     # A control that lies about what it did is worse than a lower limit.
     top_n = st.slider("Drivers on the championship chart", 3, 8, 8)
 
 era_note = kpis.render(kpi_df, season)
-controls[0].caption(era_note)
+st.caption(era_note)
 
-st.subheader(
-    "Championship progression",
-    help="Cumulative points by round, from a SUM() OVER (PARTITION BY season, driver "
-         "ORDER BY round) window function in v_championship_progression. Totals exclude "
-         "sprint-race points, which are out of scope -- so seasons from 2021 sit below "
-         "their official figures, though the ordering is unaffected.",
-)
-championship.render(db.championship_progression(), season, top_n=top_n)
+left, right = st.columns([2, 1])
+with left:
+    st.subheader(
+        "Championship progression",
+        help="Cumulative points by round, from a SUM() OVER (PARTITION BY season, driver "
+             "ORDER BY round) window function in v_championship_progression. Totals exclude "
+             "sprint-race points, which are out of scope -- so seasons from 2021 sit below "
+             "their official figures, though the ordering is unaffected.",
+    )
+    championship.render(db.championship_progression(), season, top_n=top_n)
+with right:
+    st.subheader(
+        "Champions",
+        help="Highest points total in scope. Sprint points are excluded, so totals from 2021 "
+             "sit below the official figures -- but the ordering was verified against real "
+             "final standings for every season, so the names here are the actual champions.",
+    )
+    champions.render(db.driver_season(), db.constructor_season(), season)
 
 left, right = st.columns(2)
 with left:

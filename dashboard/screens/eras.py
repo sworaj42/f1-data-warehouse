@@ -21,6 +21,7 @@ import layout                                    # noqa: E402
 from charts import reliability, rolling_form     # noqa: E402
 
 layout.compact()
+filter_col = layout.page_header("Eras & Form")
 
 kpi_df = db.season_kpis()
 lo, hi = int(kpi_df["season"].min()), int(kpi_df["season"].max())
@@ -30,14 +31,13 @@ form_df = db.driver_rolling_form()
 # participating drivers, alphabetical, is unusable.
 by_starts = form_df["driver_name"].value_counts().index.tolist()
 
-controls = st.columns([5, 1], vertical_alignment="center")
-with controls[1].popover("Filters", icon=":material/tune:", width="stretch"):
+with filter_col.popover("Filters", icon=":material/tune:", width="stretch"):
     season_range = st.slider("Seasons", lo, hi, (lo, hi))
     drivers = st.multiselect(
         "Drivers", by_starts, default=by_starts[:3],
         help="Ordered by career starts within 1994-2026.",
     )
-controls[0].caption(
+st.caption(
     f"{lo}-{hi} · {len(by_starts)} participating drivers · outcomes counted as status "
     "groups, not points, which is what makes them comparable across eras."
 )

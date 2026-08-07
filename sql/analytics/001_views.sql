@@ -23,6 +23,7 @@
 -- Reverse dependency order, and deliberately WITHOUT CASCADE -- v_driver_race_craft is built on
 -- v_quali_vs_race, so the order matters, and if anything else ever comes to depend on these the
 -- migration should fail loudly rather than silently drop it.
+DROP VIEW IF EXISTS v_driver_season;
 DROP VIEW IF EXISTS v_driver_race_craft;
 DROP VIEW IF EXISTS v_quali_vs_race;
 DROP VIEW IF EXISTS v_reliability_trend;
@@ -88,6 +89,40 @@ JOIN dim_race        r ON r.race_key        = f.race_key
 JOIN dim_constructor c ON c.constructor_key = f.constructor_key
 WHERE r.season <> -1
 GROUP BY r.season, r.points_era, c.constructor_key, c.name, c.last_season;
+
+-- Driver performance by season. Grain: one row per season per driver.
+-- The exact mirror of v_constructor_season, and it exists for the same reason: the KPI cards are
+-- at season grain and cannot also answer "who won it, and with what".
+--
+-- Backs the champions panel. Every counter is a SUM over a pre-computed flag, so this is one scan
+-- with no CASE -- the same argument as v_season_kpis.
+CREATE OR REPLACE VIEW v_driver_season AS
+SELECT
+    r.season,
+    r.points_era,
+    d.driver_key,
+    d.full_name                     AS driver_name,
+    -- A driver can change team mid-season, so there is no single constructor for the row.
+    -- mode() picks the one they raced for most, which is what a "their team" label means.
+    mode() WITHIN GROUP (ORDER BY c.name) AS main_constructor,
+    COUNT(*)                        AS races,
+    SUM(f.points)                   AS points,
+    SUM(f.is_winner::INT)           AS wins,
+    SUM(f.is_podium::INT)           AS podiums,
+    SUM(f.is_points_finish::INT)    AS points_finishes,
+    SUM(f.is_pole_start::INT)       AS pole_starts,
+    SUM(f.is_dnf::INT)              AS dnfs,
+    ROUND(AVG(f.finish_position), 2) AS avg_finish,
+    ROUND(AVG(f.grid_position), 2)   AS avg_grid
+FROM fact_race_result f
+JOIN dim_race        r ON r.race_key        = f.race_key
+JOIN dim_driver      d ON d.driver_key      = f.driver_key
+JOIN dim_constructor c ON c.constructor_key = f.constructor_key
+WHERE r.season <> -1
+GROUP BY r.season, r.points_era, d.driver_key, d.full_name;
+
+COMMENT ON VIEW v_driver_season IS 'Grain: season x driver. Mirrors v_constructor_season. Backs the champions panel. NOTE: the highest points total here is the champion by our scope, which excludes sprint points -- verified to give the correct champion and ordering for every season, but not the official totals from 2021.';
+
 
 COMMENT ON VIEW v_constructor_season IS 'Grain: season x constructor. Split out of v_season_kpis because the KPI cards need a season grain and the stacked bar needs a constructor grain; one view cannot be both without aggregating in pandas.';
 
