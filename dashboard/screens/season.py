@@ -29,7 +29,10 @@ layout.compact()
 kpi_df = db.season_kpis()
 seasons = sorted(kpi_df["season"].tolist(), reverse=True)
 season = st.sidebar.selectbox("Season", seasons, index=0)
-top_n = st.sidebar.slider("Drivers on the championship chart", 3, 15, 8)
+# Capped at 8, not arbitrarily: the chart's legend needs ~28px per driver and the
+# chart is 250px tall, so a 9th entry is silently dropped rather than shown. A
+# control that lies about what it did is worse than a lower limit.
+top_n = st.sidebar.slider("Drivers on the championship chart", 3, 8, 8)
 
 kpis.render(kpi_df, season)
 

@@ -30,9 +30,14 @@ charts carry less detail than the championship line.
 """
 import streamlit as st
 
-CHAMPIONSHIP_HEIGHT = 210
-ROW2_HEIGHT = 187
-FULL_WIDTH_HEIGHT = 265   # page 2: two stacked charts, no KPI row to make room for
+# Tuned against a MEASURED 785px viewport (window.innerHeight), leaving ~10px spare.
+# CHAMPIONSHIP_HEIGHT is not free to shrink: a right-hand legend needs ~28px per
+# driver, so at 8 drivers it needs >=224px or Vega silently truncates the list.
+# That truncation is what pushed an earlier version to direct line labels, which
+# then overlapped badly whenever drivers were close on points. Height solves both.
+CHAMPIONSHIP_HEIGHT = 250
+ROW2_HEIGHT = 190
+FULL_WIDTH_HEIGHT = 292   # page 2: two stacked charts, no KPI row to make room for
 
 _CSS = """
 <style>
