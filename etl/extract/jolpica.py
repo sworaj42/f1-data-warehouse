@@ -5,6 +5,13 @@ data/raw/ before anything parses it, so:
   * the parse/load stages run fully offline (the demo works with wifi off);
   * re-running never re-hits the API (a cached page is served from disk).
 
+The cache is keyed on page *identity*, never on content: it answers "have I fetched
+offset N of this endpoint before?", not "is what I fetched still correct?". That is
+right for a closed season, which is immutable, and wrong for anything that grows --
+the reference endpoints and the season currently being run. Callers say so with
+`refresh=True`, which refetches a page it already holds and degrades to the cached
+copy when the network is unavailable.
+
 Rate limiting is enforced client-side with a dual token bucket (burst + sustained)
 rather than reacting to HTTP 429. Transient failures (429 / 5xx / network) retry
 with exponential backoff.
@@ -92,31 +99,48 @@ class JolpicaClient:
             backoff = min(backoff * 2, 60.0)
         raise RuntimeError(f"exhausted retries for {url} params={params}")
 
-    def _fetch_page(self, path: str, offset: int, cache_key: str) -> dict:
-        """Return one page's MRData, landing it to disk first (or serving the cache)."""
+    def _fetch_page(self, path: str, offset: int, cache_key: str, refresh: bool = False) -> dict:
+        """Return one page's MRData, landing it to disk first (or serving the cache).
+
+        `refresh` refetches a page already on disk and overwrites it. If that request
+        fails we fall back to the cached copy rather than raising, so an offline run
+        still succeeds -- refreshing is best-effort, and the warning says which it was.
+        """
         cache_file = self.raw_dir / cache_key / f"page_{offset}.json"
-        if cache_file.exists():
+        cached = cache_file.exists()
+        if cached and not refresh:
             log.debug("cache hit: %s", cache_file)
             return json.loads(cache_file.read_text())["MRData"]
 
         url = f"{self.base_url}/{path.lstrip('/')}"
-        payload = self._request_with_retry(url, {"limit": self.page_size, "offset": offset})
+        try:
+            payload = self._request_with_retry(url, {"limit": self.page_size, "offset": offset})
+        except (requests.RequestException, RuntimeError):
+            if not cached:
+                raise
+            log.warning("refresh failed for %s, serving the cached page", cache_file)
+            return json.loads(cache_file.read_text())["MRData"]
 
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(json.dumps(payload))
         return payload["MRData"]
 
     # -- public -------------------------------------------------------------
-    def paginate(self, path: str, cache_key: str):
+    def paginate(self, path: str, cache_key: str, refresh: bool = False):
         """Yield every MRData page for an endpoint, following the `total` field.
 
         Advances the offset by the *effective* page size the API reports (`limit`),
         not by the requested size -- Jolpica caps pages at 100 regardless of the
         requested limit, so stepping by the request size would skip rows.
+
+        `refresh` matters most here, because `total` is read off page 0: served from
+        cache it is frozen at whatever it was when that page was first landed, so the
+        loop stops short of any row added since and never even requests the page that
+        would hold it. Refetching page 0 is what lets the loop see the new total.
         """
         offset = 0
         while True:
-            mrdata = self._fetch_page(path, offset, cache_key)
+            mrdata = self._fetch_page(path, offset, cache_key, refresh=refresh)
             yield mrdata
             total = int(mrdata.get("total", 0))
             step = int(mrdata.get("limit") or self.page_size) or self.page_size
@@ -124,8 +148,9 @@ class JolpicaClient:
             if offset >= total:
                 break
 
-    def land(self, path: str, cache_key: str) -> int:
+    def land(self, path: str, cache_key: str, refresh: bool = False) -> int:
         """Land all pages of an endpoint to disk. Returns the page count."""
-        pages = sum(1 for _ in self.paginate(path, cache_key))
-        log.info("landed %-22s -> data/raw/%s (%d page[s])", path, cache_key, pages)
+        pages = sum(1 for _ in self.paginate(path, cache_key, refresh=refresh))
+        log.info("landed %-22s -> data/raw/%s (%d page[s])%s", path, cache_key, pages,
+                 " [refreshed]" if refresh else "")
         return pages
