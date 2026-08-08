@@ -30,7 +30,7 @@ because the flags and status groupings are computed once at load time.
 | `f1_prod` → `f1_dw` (star schema) | **Built, loaded, verified** |
 | Analytics views + indexes | **Built, measured** |
 | Streamlit dashboard | **Built** |
-| Airflow orchestration | Planned |
+| Airflow orchestration | **Built, verified** |
 
 ---
 
@@ -82,7 +82,15 @@ docker compose up -d                                   # Postgres 16 on localhos
 # 4. analytics views + indexes, then the dashboard
 ./.venv/bin/python scripts/run_migrations.py --target analytics
 ./.venv/bin/streamlit run dashboard/app.py            # http://localhost:8501
+
+# 5. orchestration (optional; the pipeline runs fine without it)
+docker compose -f docker-compose.airflow.yml up -d    # http://localhost:8080
 ```
+
+The Airflow compose file pins `name: f1-airflow`. That is load-bearing, not cosmetic: Compose
+derives a project name from the directory, so without it this file and `docker-compose.yml` are
+the same project — and since both define a `postgres` service, starting Airflow would replace the
+F1 database container with Airflow's metadata database.
 
 Then connect DBeaver to `localhost:5433`, database `f1_dw`, user/password from `.env`.
 
