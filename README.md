@@ -11,13 +11,13 @@ got more reliable?**
 | 1990s | 98 | **46.4%** | 28.8% |
 | 2000s | 174 | 30.2% | 19.3% |
 | 2010s | 198 | 17.8% | 10.5% |
-| 2020s | 141 | **12.9%** | **3.4%** |
+| 2020s | 142 | **12.9%** | **3.4%** |
 
 Nearly half the field used to fail to finish. Today it is one in eight, and mechanical failures
 have all but vanished. That query is a single scan of one fact table joined to two dimensions,
 because the flags and status groupings are computed once at load time.
 
-**33 seasons** (1994–2026) · **611 races** · **13,006 results** · **11,190 qualifying** ·
+**33 seasons** (1994–2026) · **612 races** · **13,028 results** · **11,212 qualifying** ·
 **6 dimensions** · **2 facts**
 
 ---
@@ -43,7 +43,7 @@ flowchart LR
     subgraph DAG1["<b>f1_api_to_oltp</b> — @weekly"]
         direction LR
         RAW["<b>data/raw/</b><br/>page_*.json"]
-        PROD[("<b>f1_prod</b><br/>3NF · 7 tables<br/>13,006 results")]
+        PROD[("<b>f1_prod</b><br/>3NF · 7 tables<br/>13,028 results")]
         RAW -->|"parse · clean · dedup<br/>upsert on natural key"| PROD
     end
 
@@ -122,14 +122,14 @@ table and only re-reads recent races.
 ```mermaid
 flowchart LR
     DATE["<b>dim_date</b><br/>12,054"]:::dim
-    RACE["<b>dim_race</b><br/>612"]:::dim
+    RACE["<b>dim_race</b><br/>613"]:::dim
     DRIVER["<b>dim_driver</b><br/>178"]:::dim
     CONS["<b>dim_constructor</b><br/>50"]:::dim
     CIRC["<b>dim_circuit</b><br/>44"]:::dim
     STATUS["<b>dim_status</b><br/>110"]:::dim
 
-    FRR["<b>fact_race_result</b><br/>13,006 rows<br/><i>PK (race_key, driver_key)</i>"]:::fact
-    FQ["<b>fact_qualifying</b><br/>11,190 rows<br/><i>PK (race_key, driver_key)</i>"]:::fact
+    FRR["<b>fact_race_result</b><br/>13,028 rows<br/><i>PK (race_key, driver_key)</i>"]:::fact
+    FQ["<b>fact_qualifying</b><br/>11,212 rows<br/><i>PK (race_key, driver_key)</i>"]:::fact
 
     DATE   -->|1..N| FRR
     RACE   -->|1..N| FRR
@@ -491,7 +491,7 @@ Full reasoning lives in `documentation/CLAUDE.md`.
 
 Not claimed — measured, on the live database.
 
-- **Full load in ~1.6s**: 13,006 + 11,190 fact rows, all six dimensions.
+- **Full load in ~1.6s**: 13,028 + 11,212 fact rows, all six dimensions.
 - **Idempotent**: second run → identical counts, zero rows skipped.
 - **Incremental**: watermark-driven, with a 30-day lookback so a late disqualification is still
   picked up.
