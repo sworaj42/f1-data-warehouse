@@ -18,6 +18,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from etl import config, db                     # noqa: E402
+from etl.extract import landing                 # noqa: E402
 from etl.extract.jolpica import JolpicaClient   # noqa: E402
 from etl.logging_config import setup_logging    # noqa: E402
 from etl.oltp import load, parse                # noqa: E402
@@ -27,21 +28,26 @@ log = logging.getLogger(__name__)
 _TABLES = ["circuits", "drivers", "constructors", "statuses", "races", "results", "qualifying"]
 
 
-def extract(client: JolpicaClient, seasons) -> None:
-    """Land every endpoint's raw JSON to disk (skips anything already cached)."""
+def extract(client: JolpicaClient, seasons, refresh: bool = False) -> None:
+    """Land every endpoint's raw JSON to disk (skips anything already cached).
+
+    The endpoint list and the refresh policy live in etl/extract/landing.py, shared
+    with the DAG. Refresh defaults off here: a backfill's first run has nothing
+    cached to be stale, and thereafter the weekly DAG keeps the same data/raw/ files
+    current -- both tools read the one landing zone, so freshness belongs to the
+    cache, not to whichever tool happens to be reading it.
+    """
     log.info("=== EXTRACT: landing raw JSON ===")
-    client.land("circuits/", "circuits")
-    client.land("drivers/", "drivers")
-    client.land("constructors/", "constructors")
-    client.land("status/", "status")
-    for s in seasons:
-        client.land(f"{s}/races/", f"races/{s}")
-        client.land(f"{s}/results/", f"results/{s}")
-        client.land(f"{s}/qualifying/", f"qualifying/{s}")
+    landing.land_all(client, seasons, refresh=refresh)
 
 
-def load_all(conn, seasons) -> None:
-    """Parse the landed JSON and upsert every table in FK-dependency order."""
+def load_all(conn, seasons) -> int:
+    """Parse the landed JSON and upsert every table in FK-dependency order.
+
+    Returns the number of rows DROPPED for an unresolvable FK. The loaders warn and
+    carry on rather than raising -- one bad row should not abandon a good batch -- so
+    the count has to come back here for main() to fail on.
+    """
     log.info("=== LOAD: parse + upsert into f1_prod ===")
 
     # 1. reference tables (independent)
@@ -62,7 +68,8 @@ def load_all(conn, seasons) -> None:
     #    -- future rounds of the in-progress season appear in /races but have no results yet.
     circuits = load.fetch_lookup(conn, "circuits", "circuit_ref", "circuit_id")
     run_keys = {(r["season"], r["round"]) for r in results}
-    load.load_races(conn, parse.parse_races(seasons), circuits, run_keys=run_keys)
+    _, skipped_races = load.load_races(conn, parse.parse_races(seasons), circuits,
+                                       run_keys=run_keys)
 
     # 3. results + qualifying (need race/driver/constructor/status surrogate keys)
     races = load.fetch_race_lookup(conn)
@@ -70,8 +77,10 @@ def load_all(conn, seasons) -> None:
     constructors = load.fetch_lookup(conn, "constructors", "constructor_ref", "constructor_id")
     statuses = load.fetch_lookup(conn, "statuses", "status_text", "status_id")
 
-    load.load_results(conn, results, races, drivers, constructors, statuses)
-    load.load_qualifying(conn, quali, races, drivers, constructors)
+    _, skipped_results = load.load_results(conn, results, races, drivers, constructors, statuses)
+    _, skipped_quali = load.load_qualifying(conn, quali, races, drivers, constructors)
+
+    return skipped_races + skipped_results + skipped_quali
 
 
 def row_counts(conn) -> dict:
@@ -107,11 +116,19 @@ def main():
     conn = db.get_conn()
     try:
         t1 = time.monotonic()
-        load_all(conn, seasons)
+        dropped = load_all(conn, seasons)
         log.info("load stage done in %.1fs", time.monotonic() - t1)
         log.info("final row counts: %s", row_counts(conn))
     finally:
         conn.close()
+
+    # Counts are logged first: a non-zero exit is more useful with them in the log.
+    if dropped:
+        raise SystemExit(
+            f"FAILED: {dropped} rows dropped for unresolvable foreign keys -- they are NOT "
+            f"in f1_prod. See the 'skip ...' warnings above. Usually stale reference JSON: "
+            f"clear data/raw/{{drivers,constructors,circuits,status}} and re-run."
+        )
 
     log.info("backfill complete in %.1fs total", time.monotonic() - t0)
 
