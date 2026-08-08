@@ -5,3 +5,5 @@ __pycache__/
 data/raw/
 logs/
 .ipynb_checkpoints/
+config/
+plugins/
