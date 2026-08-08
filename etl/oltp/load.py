@@ -8,6 +8,12 @@ Transaction tables:           resolve surrogate FKs from in-memory lookups,
 Running any load twice produces identical row counts -- the conflict target is
 the natural/business key, so a second run updates in place rather than inserting.
 Every load runs inside an explicit transaction (etl.db.transaction).
+
+Skipping is deliberately non-fatal HERE and fatal in the CALLER: a loader that
+raised mid-batch would abandon good rows over one bad one, so instead the three
+transaction loaders return (upserted, skipped) and the orchestrator decides. Both
+orchestrators treat skipped > 0 as a failure -- a dropped row is silent data loss,
+and a warning in a task log is not a signal anyone sees.
 """
 import logging
 
@@ -134,7 +140,11 @@ ON CONFLICT (season, round) DO UPDATE SET
 def load_races(conn, rows, circuit_lookup, run_keys=None):
     """Load races. If run_keys is given (set of (season, round)), only races that have
     actually been run are loaded -- future rounds of an in-progress season are held back
-    until they produce results, so a race never exists without a result row."""
+    until they produce results, so a race never exists without a result row.
+
+    Returns (upserted, skipped). `skipped` counts rows DROPPED for an unresolvable FK
+    and is always a bug -- the caller is expected to fail on it. It deliberately excludes
+    `unrun`, which is the intended hold-back above, not a failure."""
     prepared, skipped, unrun = [], 0, 0
     for r in rows:
         if run_keys is not None and (r["season"], r["round"]) not in run_keys:
@@ -149,7 +159,7 @@ def load_races(conn, rows, circuit_lookup, run_keys=None):
     prepared, removed = _dedup(prepared, key=lambda r: (r["season"], r["round"]))
     n = _upsert(conn, "races", _RACE_SQL, _RACE_COLS, prepared)
     log.info("races: upserted %d (skipped %d, deduped %d, not-yet-run %d)", n, skipped, removed, unrun)
-    return n
+    return n, skipped
 
 
 # --- results ---------------------------------------------------------------
@@ -176,6 +186,9 @@ ON CONFLICT (race_id, driver_id) DO UPDATE SET
 
 
 def load_results(conn, rows, races, drivers, constructors, statuses):
+    """Returns (upserted, skipped). A skipped row is silent data loss -- most often a
+    driver/circuit that debuted after the cached reference JSON was landed -- so the
+    caller must fail on it. Nothing else will: this loop warns and carries on."""
     prepared, skipped = [], 0
     for r in rows:
         rid = races.get((r["season"], r["round"]))
@@ -191,7 +204,7 @@ def load_results(conn, rows, races, drivers, constructors, statuses):
     prepared, removed = _dedup(prepared, key=lambda r: (r["race_id"], r["driver_id"]))
     n = _upsert(conn, "results", _RESULT_SQL, _RESULT_COLS, prepared)
     log.info("results: upserted %d (skipped %d, deduped %d)", n, skipped, removed)
-    return n
+    return n, skipped
 
 
 # --- qualifying ------------------------------------------------------------
@@ -208,6 +221,8 @@ ON CONFLICT (race_id, driver_id) DO UPDATE SET
 
 
 def load_qualifying(conn, rows, races, drivers, constructors):
+    """Returns (upserted, skipped). Same contract as load_results: a skip is data loss,
+    and the caller is the only thing that can turn it into a failure."""
     prepared, skipped = [], 0
     for r in rows:
         rid = races.get((r["season"], r["round"]))
@@ -222,4 +237,4 @@ def load_qualifying(conn, rows, races, drivers, constructors):
     prepared, removed = _dedup(prepared, key=lambda r: (r["race_id"], r["driver_id"]))
     n = _upsert(conn, "qualifying", _QUALI_SQL, _QUALI_COLS, prepared)
     log.info("qualifying: upserted %d (skipped %d, deduped %d)", n, skipped, removed)
-    return n
+    return n, skipped
