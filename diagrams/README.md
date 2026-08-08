@@ -1,20 +1,23 @@
 # Diagrams
 
-Visual documentation for the warehouse. Two kinds, kept deliberately separate:
+Visual documentation for the warehouse. Everything the root `README.md` needs is Mermaid —
+architecture, the star constellation, the pipeline stages, and both full ER diagrams with columns,
+key markers and cardinality. Mermaid renders natively on GitHub, lives in version control, and is
+written from the DDL, so it cannot silently drift out of sync with `sql/oltp` and `sql/olap`.
 
-- **Conceptual diagrams live in the root `README.md` as Mermaid** — architecture, the star
-  constellation, the pipeline stages. They render natively on GitHub, live in version control, and
-  cannot silently drift out of sync with the code.
-- **Detailed ER diagrams live here as PNG exports** from DBeaver. They document every column of
-  every table, which Mermaid renders poorly at 24 columns wide.
+The PNG exports here survive for the one thing Mermaid genuinely cannot do: **manual layout.**
+Mermaid auto-arranges, so on a diagram with six dimensions feeding two facts the connectors cross
+through unrelated tables and the radial shape is lost — the star stops looking like a star. A
+hand-arranged DBeaver export is still the better picture for a slide or a printed report, where
+that shape is the whole point.
 
-The two do different jobs: the Mermaid star explains *why the design is a constellation*, the PNG
-documents *what was actually implemented*.
+(An earlier version of this file blamed column count. That was wrong: Mermaid renders the 20-column
+`fact_race_result` perfectly legibly. Layout control is the real difference.)
 
-| File | What it shows |
-|---|---|
-| `oltp_erd.png` | `f1_prod` — 3NF, 7 tables: reference, event, transaction |
-| `olap_star.png` | `f1_dw` — 6 dimensions + 2 facts, fact tables in red |
+| File | What it shows | Still used for |
+|---|---|---|
+| `oltp_erd.png` | `f1_prod` — 3NF, 7 tables: reference, event, transaction | slides, print |
+| `olap_star.png` | `f1_dw` — 6 dimensions + 2 facts, fact tables in red | slides, print |
 
 Once those stages exist: `airflow_dag.png` (the DAG graph from the Airflow UI) and
 `dashboard.png` (the Streamlit dashboard).
