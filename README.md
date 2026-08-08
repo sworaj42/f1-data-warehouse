@@ -38,22 +38,34 @@ because the flags and status groupings are computed once at load time.
 
 ```mermaid
 flowchart LR
-    API["Jolpica-F1 API"]
-    RAW["data/raw/*.json<br/><b>landing zone</b>"]
-    PROD[("f1_prod<br/>3NF · 7 tables")]
-    DW[("f1_dw<br/>star · 6 dims + 2 facts")]
-    DASH["Streamlit<br/>2-page dashboard"]
+    API(["<b>Jolpica-F1 API</b><br/>free · rate-limited"])
 
-    API -->|"etl/extract<br/>paginate · rate-limit · retry"| RAW
-    RAW -->|"etl/oltp<br/>parse · clean · dedup · upsert"| PROD
-    PROD -->|"etl/olap<br/>extract · transform · gate · load"| DW
-    DW --> DASH
-    AF["Airflow<br/>2 DAGs"] -.->|orchestrates| RAW
-    AF -.->|orchestrates| DW
+    subgraph DAG1["<b>f1_api_to_oltp</b> — @weekly"]
+        direction LR
+        RAW["<b>data/raw/</b><br/>page_*.json"]
+        PROD[("<b>f1_prod</b><br/>3NF · 7 tables<br/>13,006 results")]
+        RAW -->|"parse · clean · dedup<br/>upsert on natural key"| PROD
+    end
 
-    style RAW stroke-dasharray: 5 5
-    style AF stroke-dasharray: 3 3
+    subgraph DAG2["<b>f1_oltp_to_dw</b> — @daily"]
+        DW[("<b>f1_dw</b><br/>star · 6 dims + 2 facts")]
+    end
+
+    DASH(["<b>Streamlit</b><br/>2 pages · 7 views"])
+
+    API -->|"paginate · 4 req/s<br/>retry · land to disk"| RAW
+    PROD -->|"surrogate keys · derived flags<br/><b>quality gate</b> · upsert"| DW
+    DW -->|"SQL views<br/>@st.cache_data"| DASH
+
+    classDef store fill:#1a5276,color:#fff,stroke:#0d2c3d,stroke-width:2px
+    classDef zone fill:#7e5109,color:#fff,stroke:#4d3106,stroke-width:2px,stroke-dasharray:5 4
+    classDef ext fill:#424949,color:#fff,stroke:#212f3c,stroke-width:2px
+    class PROD,DW store
+    class RAW zone
+    class API,DASH ext
 ```
+
+`data/raw/` is drawn dashed because it is the network boundary, and each subgraph is one DAG.
 
 **The landing zone is a hard boundary.** Once JSON is on disk nothing downstream touches the
 network — parse, load and the whole warehouse pipeline run fully offline. Re-runs never re-hit the
@@ -109,24 +121,31 @@ table and only re-reads recent races.
 
 ```mermaid
 flowchart LR
-    DATE[dim_date]:::dim --> FRR
-    DRIVER[dim_driver]:::dim --> FRR
-    CONS[dim_constructor]:::dim --> FRR
-    CIRC[dim_circuit]:::dim --> FRR
-    RACE[dim_race]:::dim --> FRR
-    STATUS[dim_status]:::dim --> FRR
+    DATE["<b>dim_date</b><br/>12,054"]:::dim
+    RACE["<b>dim_race</b><br/>612"]:::dim
+    DRIVER["<b>dim_driver</b><br/>178"]:::dim
+    CONS["<b>dim_constructor</b><br/>50"]:::dim
+    CIRC["<b>dim_circuit</b><br/>44"]:::dim
+    STATUS["<b>dim_status</b><br/>110"]:::dim
 
-    DATE --> FQ
-    DRIVER --> FQ
-    CONS --> FQ
-    CIRC --> FQ
-    RACE --> FQ
+    FRR["<b>fact_race_result</b><br/>13,006 rows<br/><i>PK (race_key, driver_key)</i>"]:::fact
+    FQ["<b>fact_qualifying</b><br/>11,190 rows<br/><i>PK (race_key, driver_key)</i>"]:::fact
 
-    FRR["<b>fact_race_result</b><br/>13,006 rows"]:::fact
-    FQ["<b>fact_qualifying</b><br/>11,190 rows"]:::fact
+    DATE   -->|1..N| FRR
+    RACE   -->|1..N| FRR
+    DRIVER -->|1..N| FRR
+    CONS   -->|1..N| FRR
+    CIRC   -->|1..N| FRR
+    STATUS -->|1..N| FRR
 
-    classDef fact fill:#c0392b,color:#fff,stroke:#7b241c
-    classDef dim fill:#2471a3,color:#fff,stroke:#1a5276
+    DATE   -->|1..N| FQ
+    RACE   -->|1..N| FQ
+    DRIVER -->|1..N| FQ
+    CONS   -->|1..N| FQ
+    CIRC   -->|1..N| FQ
+
+    classDef fact fill:#922b21,color:#fff,stroke:#641e16,stroke-width:2px
+    classDef dim fill:#1a5276,color:#fff,stroke:#0d2c3d,stroke-width:2px
 ```
 
 A **fact constellation**: five dimensions are shared by both facts, which is what lets a single
@@ -139,10 +158,218 @@ its measure columns null by construction, and `q3_ms IS NULL` would stop meaning
 Q2" and start also meaning "this is a race row".
 
 ### OLTP — 3NF, 7 tables
-![OLTP ERD](diagrams/oltp_erd.png)
+
+Every table carries a surrogate `SERIAL` primary key **and** a `UNIQUE` natural key. The natural
+key is the `ON CONFLICT` target that makes every load idempotent; the surrogate key is what the
+foreign keys point at.
+
+```mermaid
+erDiagram
+    CIRCUITS     ||--o{ RACES      : "hosts"
+    RACES        ||--|{ RESULTS    : "produces"
+    RACES        ||--o{ QUALIFYING : "produces"
+    DRIVERS      ||--o{ RESULTS    : "scores in"
+    DRIVERS      ||--o{ QUALIFYING : "sets time in"
+    CONSTRUCTORS ||--o{ RESULTS    : "enters"
+    CONSTRUCTORS ||--o{ QUALIFYING : "enters"
+    STATUSES     ||--o{ RESULTS    : "classifies"
+
+    CIRCUITS {
+        int circuit_id PK
+        varchar circuit_ref UK "monza"
+        varchar name
+        varchar locality
+        varchar country
+        numeric latitude "CHECK -90..90"
+        numeric longitude "CHECK -180..180"
+    }
+    DRIVERS {
+        int driver_id PK
+        varchar driver_ref UK "hamilton"
+        smallint permanent_number "NULL before 2014"
+        char code "NULL for older drivers"
+        varchar forename
+        varchar surname
+        date date_of_birth
+        varchar nationality
+    }
+    CONSTRUCTORS {
+        int constructor_id PK
+        varchar constructor_ref UK "red_bull"
+        varchar name
+        varchar nationality
+    }
+    STATUSES {
+        int status_id PK
+        varchar status_text UK "Finished, +1 Lap"
+        int status_code UK "API statusId, nullable"
+    }
+    RACES {
+        int race_id PK
+        smallint season UK "UNIQUE (season, round)"
+        smallint round UK
+        varchar race_name
+        date race_date
+        time race_time "NULL for older races"
+        date qualifying_date "NULL pre-2003"
+        int circuit_id FK
+    }
+    RESULTS {
+        int result_id PK
+        int race_id FK "UNIQUE (race_id, driver_id)"
+        int driver_id FK
+        int constructor_id FK
+        int status_id FK
+        smallint grid_position "0 = pit-lane start"
+        smallint finish_position "NULL if not classified"
+        varchar position_text "raw API: 1, R, D, W"
+        smallint position_order
+        numeric points
+        smallint laps_completed
+        bigint race_time_ms
+        bigint fastest_lap_time_ms
+        numeric fastest_lap_speed_kph
+    }
+    QUALIFYING {
+        int qualifying_id PK
+        int race_id FK "UNIQUE (race_id, driver_id)"
+        int driver_id FK
+        int constructor_id FK
+        smallint quali_position
+        bigint q1_ms "NULL if no time set"
+        bigint q2_ms "NULL if out in Q1"
+        bigint q3_ms "NULL if out in Q2"
+    }
+```
+
+**Reading the cardinality.** `RACES ||--|{ RESULTS` is **one-or-more**, not zero-or-more, and that
+is enforced by the loader rather than the DDL: a scheduled season lists future rounds that have no
+results yet, and `load_races(run_keys=...)` holds them back until they have been run. So a race row
+never exists without at least one result. Every other relationship is zero-or-more — a driver or
+circuit can exist in the reference data without yet appearing in a race.
+
+`chk_results_finish` additionally enforces that `finish_position` is NULL *exactly* when
+`position_text` is non-numeric, so "did not finish" cannot disagree with itself.
 
 ### Warehouse — star schema
-![OLAP star schema](diagrams/olap_star.png)
+
+```mermaid
+erDiagram
+    DIM_DATE        ||--o{ FACT_RACE_RESULT : "raced on"
+    DIM_RACE        ||--o{ FACT_RACE_RESULT : "at"
+    DIM_DRIVER      ||--o{ FACT_RACE_RESULT : "by"
+    DIM_CONSTRUCTOR ||--o{ FACT_RACE_RESULT : "for"
+    DIM_CIRCUIT     ||--o{ FACT_RACE_RESULT : "held at"
+    DIM_STATUS      ||--o{ FACT_RACE_RESULT : "ended as"
+
+    DIM_DATE        ||--o{ FACT_QUALIFYING : "qualified on"
+    DIM_RACE        ||--o{ FACT_QUALIFYING : "for"
+    DIM_DRIVER      ||--o{ FACT_QUALIFYING : "by"
+    DIM_CONSTRUCTOR ||--o{ FACT_QUALIFYING : "for"
+    DIM_CIRCUIT     ||--o{ FACT_QUALIFYING : "held at"
+
+    DIM_DATE {
+        int date_key PK "YYYYMMDD"
+        date full_date UK
+        smallint year
+        smallint quarter
+        smallint month
+        varchar month_name
+        smallint week_of_year "ISO 1-53"
+        smallint day_of_week
+        boolean is_weekend
+    }
+    DIM_RACE {
+        int race_key PK
+        smallint season UK "UNIQUE (season, round)"
+        smallint round UK
+        varchar race_name
+        date race_date
+        smallint race_laps "DERIVED MAX(laps_completed)"
+        boolean is_season_finale "DERIVED"
+        varchar points_era "DERIVED 1994-2009 .. 2025+"
+        boolean has_fastest_lap_data "DERIVED season >= 2004"
+        boolean has_quali_knockout "DERIVED season >= 2006"
+    }
+    DIM_DRIVER {
+        int driver_key PK
+        varchar driver_ref UK
+        varchar full_name "DERIVED forename || surname"
+        char code
+        smallint permanent_number
+        date date_of_birth
+        varchar nationality
+    }
+    DIM_CONSTRUCTOR {
+        int constructor_key PK
+        varchar constructor_ref UK
+        varchar name
+        varchar nationality
+        smallint last_season "DERIVED MAX(season)"
+    }
+    DIM_CIRCUIT {
+        int circuit_key PK
+        varchar circuit_ref UK
+        varchar name
+        varchar locality
+        varchar country
+        numeric latitude
+        numeric longitude
+    }
+    DIM_STATUS {
+        int status_key PK
+        varchar status_text UK
+        int status_code
+        varchar status_group "DERIVED 5 buckets"
+        boolean is_classified "DERIVED"
+    }
+    FACT_RACE_RESULT {
+        int race_key PK,FK "PK (race_key, driver_key)"
+        int driver_key PK,FK
+        int date_key FK
+        int constructor_key FK
+        int circuit_key FK
+        int status_key FK
+        int source_result_id UK "lineage to f1_prod"
+        date race_date "incremental watermark"
+        numeric points "ADDITIVE within points_era"
+        smallint laps_completed "ADDITIVE"
+        smallint grid_position "SEMI-ADDITIVE, AVG only"
+        smallint finish_position "SEMI-ADDITIVE, AVG only"
+        smallint positions_gained "DERIVED grid - finish"
+        smallint quali_position "denormalised from qualifying"
+        bigint race_time_ms "NON-ADDITIVE"
+        boolean is_winner "DERIVED"
+        boolean is_podium "DERIVED"
+        boolean is_points_finish "DERIVED"
+        boolean is_dnf "DERIVED"
+        boolean is_pole_start "DERIVED"
+        boolean is_fastest_lap "DERIVED"
+    }
+    FACT_QUALIFYING {
+        int race_key PK,FK "PK (race_key, driver_key)"
+        int driver_key PK,FK
+        int date_key FK
+        int constructor_key FK
+        int circuit_key FK
+        int source_qualifying_id UK "lineage to f1_prod"
+        date race_date "incremental watermark"
+        smallint quali_position "SEMI-ADDITIVE, AVG only"
+        bigint q1_ms "NON-ADDITIVE, NULL by rule"
+        bigint q2_ms "NON-ADDITIVE, NULL by rule"
+        bigint q3_ms "NON-ADDITIVE, NULL by rule"
+        bigint best_quali_ms "DERIVED COALESCE(q3,q2,q1)"
+        bigint gap_to_pole_ms "DERIVED window MIN per race"
+        boolean is_pole "DERIVED"
+        boolean reached_q2 "DERIVED"
+        boolean reached_q3 "DERIVED"
+    }
+```
+
+**Two things the diagram is deliberately showing.** `circuit_key` sits on both *facts*, not on
+`dim_race` — putting it there would snowflake the model and make every circuit query a two-hop
+join. And the grain is declared as a composite primary key, `PRIMARY KEY (race_key, driver_key)`,
+so a duplicate load is rejected by the database rather than merely avoided by the ETL.
 
 ---
 
