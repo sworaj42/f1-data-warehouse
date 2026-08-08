@@ -42,14 +42,17 @@ flowchart LR
     RAW["data/raw/*.json<br/><b>landing zone</b>"]
     PROD[("f1_prod<br/>3NF · 7 tables")]
     DW[("f1_dw<br/>star · 6 dims + 2 facts")]
-    DASH["Streamlit<br/><i>planned</i>"]
+    DASH["Streamlit<br/>2-page dashboard"]
 
     API -->|"etl/extract<br/>paginate · rate-limit · retry"| RAW
     RAW -->|"etl/oltp<br/>parse · clean · dedup · upsert"| PROD
     PROD -->|"etl/olap<br/>extract · transform · gate · load"| DW
     DW --> DASH
+    AF["Airflow<br/>2 DAGs"] -.->|orchestrates| RAW
+    AF -.->|orchestrates| DW
 
     style RAW stroke-dasharray: 5 5
+    style AF stroke-dasharray: 3 3
 ```
 
 **The landing zone is a hard boundary.** Once JSON is on disk nothing downstream touches the
