@@ -47,7 +47,7 @@ flowchart LR
         RAW -->|"parse · clean · dedup<br/>upsert on natural key"| PROD
     end
 
-    subgraph DAG2["<b>f1_oltp_to_dw</b> — @daily"]
+    subgraph DAG2["<b>f1_oltp_to_dw</b> — triggered by DAG 1"]
         DW[("<b>f1_dw</b><br/>star · 6 dims + 2 facts")]
     end
 
@@ -106,6 +106,16 @@ The Airflow compose file pins `name: f1-airflow`. That is load-bearing, not cosm
 derives a project name from the directory, so without it this file and `docker-compose.yml` are
 the same project — and since both define a `postgres` service, starting Airflow would replace the
 F1 database container with Airflow's metadata database.
+
+The second DAG is triggered by the first, not by a clock. `f1_api_to_oltp` runs `@weekly` and ends
+with `check_oltp -> should_trigger_dw -> trigger_dw`, a `TriggerDagRunOperator`; `f1_oltp_to_dw` is
+`schedule=None`. So the warehouse loads exactly when — and only when — validated new OLTP data
+exists, and a failed quality gate never starts it. Trigger `f1_api_to_oltp` with
+`trigger_dw=false` to load the OLTP database without touching the warehouse.
+
+`schedule=None` means no clock, not no triggering: `f1_oltp_to_dw` can always be run by hand
+(`--conf '{"full_reload": true}'` for a full rebuild), which is what a `scripts/backfill.py` load
+needs, since that writes `f1_prod` directly without Airflow.
 
 Then connect DBeaver to `localhost:5433`, database `f1_dw`, user/password from `.env`.
 
