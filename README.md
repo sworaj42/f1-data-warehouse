@@ -51,7 +51,7 @@ flowchart LR
         DW[("<b>f1_dw</b><br/>star · 6 dims + 2 facts")]
     end
 
-    DASH(["<b>Streamlit</b><br/>2 pages · 7 views"])
+    DASH(["<b>Streamlit</b><br/>3 pages · 10 views"])
 
     API -->|"paginate · 4 req/s<br/>retry · land to disk"| RAW
     PROD -->|"surrogate keys · derived flags<br/><b>quality gate</b> · upsert"| DW
@@ -407,7 +407,7 @@ the FIA restates weeks later actually corrects the warehouse row instead of bein
 
 ## The analytics layer
 
-Six views in `sql/analytics/001_views.sql` back a two-page Streamlit dashboard. The dashboard
+Ten views in `sql/analytics/001_views.sql` back a three-page Streamlit dashboard. The dashboard
 issues `SELECT * FROM v_<name>` and nothing else — every aggregation is in the warehouse, and the
 pages filter the cached result in pandas.
 
@@ -415,11 +415,14 @@ pages filter the cached result in pandas.
 |---|---|---|
 | `v_season_kpis` | What does a season look like at a glance? | Flag sums — one scan, no `CASE` |
 | `v_constructor_season` | Is the sport competitive or dominated? | Season × constructor grain |
+| `v_driver_season` | Who won it, and what was their season made of? | Season × driver; disjoint outcome buckets |
 | `v_championship_progression` | Who led the title race, and when did it turn? | `SUM() OVER (PARTITION BY season, driver ORDER BY round)` |
 | `v_driver_rolling_form` | Is a driver trending up or down? | `ROWS BETWEEN 4 PRECEDING AND CURRENT ROW` |
 | `v_reliability_trend` | Have cars got more reliable over 33 seasons? | Aggregate nested in a window |
 | `v_quali_vs_race` | Both facts on their shared grain | `INNER JOIN` on `(race_key, driver_key)` |
 | `v_driver_race_craft` | Who *actually* gains places on Sunday? | Residual against a per-grid-slot baseline |
+| `v_season_competitiveness` | How dominant was the strongest team? | Win share, so it compares across scoring eras |
+| `v_circuit_profile` | Which circuits break cars? | The query that earns `dim_circuit` |
 
 `v_driver_race_craft` is the one worth a second look. Plotting places gained directly is nearly
 meaningless: averaged over 2020–2026 it runs **−1.2 at pole and +5.3 from P20**, perfectly
@@ -430,9 +433,15 @@ driver and team own — and it reorders the field, which is the test that it doe
 normally lose places. The residuals sum to exactly zero within a season, so the baseline checks
 itself.
 
-`v_constructor_season` is the sixth view and exists because the KPI cards need a season grain while
-the constructor chart needs a constructor grain. One view cannot be both without a `groupby` in the
-dashboard, which would defeat the purpose of having a warehouse.
+`v_constructor_season` exists because the KPI cards need a season grain while the constructor chart
+needs a constructor grain. One view cannot be both without a `groupby` in the dashboard, which
+would defeat the purpose of having a warehouse. `v_driver_season` is its mirror at driver grain.
+
+`v_season_competitiveness` measures dominance in **wins rather than points**, and that is the
+whole reason it works across 33 seasons: the scoring system changed four times in scope, so a
+points share means something different in each era while a race win does not. The per-season
+denominator comes from `SUM(wins) OVER (PARTITION BY season)`, which is exact because every race
+has precisely one winner.
 
 ### What indexing actually did
 
@@ -460,6 +469,58 @@ index on the table (it is one column wide against the PK's two). And `idx_fq_rac
 useful at 72 scans until `REINDEX` shrank the primary key from 512 kB to 264 kB — exactly its size.
 Its whole advantage was accumulated page-split bloat, so the fix was to reindex, not to keep a
 permanent second copy of the primary key in the write path.
+
+---
+
+## Dashboard
+
+Three pages, `./.venv/bin/streamlit run dashboard/app.py`. Navigation and filters live in the
+sidebar; every figure on a page reads the same selection, so two charts can never end up on
+different slices without saying so.
+
+`dashboard/db.py` is the only module that touches Postgres, and the connection is **read-only
+enforced by the server** (`default_transaction_read_only=on`) — an `INSERT` from the dashboard
+raises rather than being prevented by convention. There is no SQL in `screens/` or `charts/` and
+no aggregation in pandas: the chart modules filter, reshape and encode, nothing more.
+
+### Season report — one season, top to bottom
+
+![Season report](diagrams/dashboard_1_season.png)
+
+KPI cards with year-on-year deltas, championship progression (a `SUM() OVER (PARTITION BY season,
+driver ORDER BY round)` window, with a hover that shows the whole field at that round), constructor
+points, what each driver's season was made of, and the full standings table.
+
+### Driver performance — the driver, separated from the car
+
+![Driver performance](diagrams/dashboard_2_drivers.png)
+
+Ordered by how much each figure subtracts. **Race craft** removes the arithmetic of the grid slot:
+pole cannot gain a place and last cannot lose one, so a raw places-gained ranking mostly sorts
+drivers by how slow their car qualifies. **Rolling form** removes single-race noise, on a reversed
+axis so up is better, with hollow markers where DNFs left the window resting on fewer than five
+classified finishes. **The result grid** subtracts nothing and is the check on the other two.
+
+### Eras & trends — 33 seasons at once
+
+![Eras and trends](diagrams/dashboard_3_eras.png)
+
+Every measure on this page counts a load-time boolean flag rather than points, which is what makes
+33 seasons comparable at all. Reliability improved monotonically — the mid-1990s field failed to
+finish about 46% of the time against 13% today — while competitiveness did not: the strongest
+team's win share swings between 35% and 95% with no trend.
+
+The reliability chart carries a marked caveat rather than a hidden one. **From 2023 the source
+stops reporting why a car retired** and returns a generic `Retired`: results carrying a cause run
+73 in 2022, 6 in 2023 and 0 in 2024, while generic retirements run 0, 53 and 49. The mechanical and
+accident bands ending is therefore a reporting change, not cars that stopped breaking. The total
+retirement share is still sound across the break; the split into causes is not.
+
+**Colour is validated, not chosen.** The eight categorical series hues clear colour-blind
+separation, lightness, chroma and 3:1 contrast against the chart surface. That is also why the
+theme is pinned in `.streamlit/config.toml` — the palette is only valid against one surface, so
+the theme and the charts ship together, and every chart renders with Streamlit's own theme
+override off so it cannot repaint the marks.
 
 ---
 
@@ -528,20 +589,22 @@ etl/
   extract/jolpica.py        rate-limited API client (dual token bucket), raw JSON landing
   oltp/                     API -> f1_prod:  parse.py, load.py
   olap/                     f1_prod -> f1_dw: extract.py, transform.py, quality.py, load.py
-  analytics/001_views.sql   six views backing the dashboard
+  analytics/001_views.sql   ten views backing the dashboard
   analytics/002_indexes.sql four measured indexes; three rejected, with the evidence
+.streamlit/config.toml      theme; pinned because the chart palette is validated against one surface
 dashboard/
-  app.py                    entry point; st.navigation over two pages
+  app.py                    entry point; st.navigation over three pages, sidebar position
+  theme.py                  the three colour scales, the Altair theme, page CSS
   db.py                     cached engine + one loader per view; read-only connection
   charts/                   one module per figure
-  screens/                  season.py, eras.py
+  screens/                  season.py, drivers.py, eras.py
 scripts/
   run_migrations.py         --target {oltp,olap,analytics}; each DB keeps its own ledger
   explain_views.py          EXPLAIN ANALYZE harness; --label before / after
   backfill.py               API -> raw -> f1_prod; --smoke / --season
   pipeline.py               f1_prod -> f1_dw; --full-reload / incremental
   check_oltp.py             row counts + integrity checks; non-zero exit on FAIL
-diagrams/                   ER diagrams and architecture visuals
+diagrams/                   ER diagrams, architecture visuals, dashboard screenshots
 ```
 
 Logs are written to `logs/` and echoed to the console, with per-stage timings and row counts.
