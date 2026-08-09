@@ -42,6 +42,8 @@ VIEWS = (
     "v_quali_vs_race",
     "v_driver_race_craft",
     "v_driver_season",
+    "v_season_competitiveness",
+    "v_circuit_profile",
 )
 
 
@@ -131,3 +133,11 @@ def driver_race_craft() -> pd.DataFrame:
 
 def driver_season() -> pd.DataFrame:
     return load_view("v_driver_season")
+
+
+def season_competitiveness() -> pd.DataFrame:
+    return load_view("v_season_competitiveness")
+
+
+def circuit_profile() -> pd.DataFrame:
+    return load_view("v_circuit_profile")

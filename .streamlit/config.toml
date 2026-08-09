@@ -1,0 +1,21 @@
+# Theme pinned rather than left to the viewer's Streamlit setting, because the chart palette is
+# validated against ONE surface colour. The categorical hues below clear the colour-blind
+# separation and 3:1 contrast gates on #1a1a19; on a light surface they would not, so the charts
+# and the theme have to ship together.
+#
+# secondaryBackgroundColor IS the chart surface: dashboard/theme.py paints bordered containers
+# with it and the Altair specs draw on a transparent background inside them.
+[theme]
+base                     = "dark"
+# Widget accent. This is NOT only a UI colour: st.column_config.ProgressColumn paints its bars
+# with it, so the points column of the standings table is drawn in it. It therefore has to be the
+# palette's magnitude hue -- the same blue the constructor bars use -- or the table would encode
+# "points" in the red this system reserves for a car that did not finish.
+primaryColor             = "#3987e5"
+backgroundColor          = "#0d0d0d"  # page plane
+secondaryBackgroundColor = "#1a1a19"  # chart surface + sidebar
+textColor                = "#ededea"
+font                     = "sans-serif"
+
+[server]
+headless = true

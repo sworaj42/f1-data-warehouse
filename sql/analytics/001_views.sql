@@ -23,6 +23,8 @@
 -- Reverse dependency order, and deliberately WITHOUT CASCADE -- v_driver_race_craft is built on
 -- v_quali_vs_race, so the order matters, and if anything else ever comes to depend on these the
 -- migration should fail loudly rather than silently drop it.
+DROP VIEW IF EXISTS v_circuit_profile;
+DROP VIEW IF EXISTS v_season_competitiveness;
 DROP VIEW IF EXISTS v_driver_season;
 DROP VIEW IF EXISTS v_driver_race_craft;
 DROP VIEW IF EXISTS v_quali_vs_race;
@@ -112,6 +114,14 @@ SELECT
     SUM(f.is_points_finish::INT)    AS points_finishes,
     SUM(f.is_pole_start::INT)       AS pole_starts,
     SUM(f.is_dnf::INT)              AS dnfs,
+    -- Disjoint outcome buckets, so a stacked bar of them sums to races with no arithmetic in the
+    -- dashboard. The four flags are strictly nested -- verified on the loaded fact: 0 rows are a
+    -- win but not a podium, 0 a podium but not a points finish, 0 both a points finish and a DNF.
+    -- Subtracting the counts is therefore safe, but it is done HERE rather than in pandas so the
+    -- page can melt the columns and draw them.
+    SUM(f.is_podium::INT) - SUM(f.is_winner::INT)        AS podiums_not_win,
+    SUM(f.is_points_finish::INT) - SUM(f.is_podium::INT) AS points_not_podium,
+    SUM((NOT f.is_dnf AND NOT f.is_points_finish)::INT)  AS classified_no_points,
     ROUND(AVG(f.finish_position), 2) AS avg_finish,
     ROUND(AVG(f.grid_position), 2)   AS avg_grid
 FROM fact_race_result f
@@ -348,3 +358,84 @@ JOIN expected e USING (season, quali_position)
 GROUP BY c.season, c.driver_key, c.driver_name;
 
 COMMENT ON VIEW v_driver_race_craft IS 'Grain: season x driver. places_vs_expected is places gained minus the season average for that grid slot, which removes the arithmetic that pole cannot gain and last cannot lose. The residuals sum to zero within a season by construction -- a self-checking property.';
+
+
+-- Is the sport competitive, or is one team running away with it? Grain: one row per season.
+--
+-- WINS, not points, is the measure here, and that is the whole point of the view: the scoring
+-- system changed four times across 1994-2026, so a points share is only comparable inside one
+-- points_era, while "what share of the season's races did the strongest team win?" is comparable
+-- across all 33. Every counter below is a SUM over a load-time boolean flag.
+--
+-- SUM(wins) OVER (PARTITION BY season) is the race count: every race has exactly one winner, which
+-- is the same identity that killed the old "wins recorded" KPI card. Used deliberately here -- the
+-- denominator has to come from the same pass, and this is it.
+--
+-- ROW_NUMBER, not RANK, and the tie-break is deliberate: two teams genuinely tie on wins in some
+-- seasons, and this view answers "how dominant was the strongest team", which is a property of the
+-- SHARE, not of which name is attached to it. RANK would emit two rows for one season and silently
+-- double-count it in any chart. The alphabetical tie-break just makes the label deterministic.
+CREATE OR REPLACE VIEW v_season_competitiveness AS
+WITH ranked AS (
+    SELECT
+        season,
+        points_era,
+        constructor_name,
+        wins,
+        SUM(wins)                        OVER (PARTITION BY season) AS races,
+        COUNT(*) FILTER (WHERE wins > 0) OVER (PARTITION BY season) AS winning_constructors,
+        ROW_NUMBER() OVER (PARTITION BY season ORDER BY wins DESC, constructor_name) AS win_rank
+    FROM v_constructor_season
+)
+SELECT
+    season,
+    points_era,
+    races,
+    winning_constructors,
+    constructor_name AS top_constructor,
+    wins             AS top_constructor_wins,
+    ROUND(100.0 * wins / NULLIF(races, 0), 1) AS top_constructor_win_share_pct
+FROM ranked
+WHERE win_rank = 1;
+
+COMMENT ON VIEW v_season_competitiveness IS 'Grain: one row per season. Dominance measured in WINS, not points, because the scoring system changed four times in scope and a points share is only era-comparable. Built on v_constructor_season so the constructor grain is defined once.';
+
+
+-- Circuit character. Grain: one row per circuit (43 rows).
+--
+-- dim_circuit was the one conformed dimension no view reached, which made it a dimension the
+-- warehouse carried and never used. This is the named query that earns it.
+--
+-- Deliberately NO first_season column. It would read 1994 for every circuit on the calendar before
+-- the source begins, which is the same left-censoring defect that removed debut_season from
+-- dim_driver and first_season from dim_constructor. last_season is kept for the same reason it was
+-- kept there: the right edge is real, and it separates a circuit still on the calendar from one
+-- that has dropped off it.
+--
+-- avg_positions_gained is the overtaking proxy. positions_gained is NULL for DNFs and pit-lane
+-- starts, so AVG skips exactly the rows where "places gained" has no meaning, with no filter here.
+-- Read it as a circuit ranking only: it does not net to zero per circuit the way a per-season
+-- residual does, because the drivers who retire are not a random sample of the grid.
+CREATE OR REPLACE VIEW v_circuit_profile AS
+SELECT
+    ci.circuit_key,
+    ci.name                                          AS circuit_name,
+    ci.country,
+    ci.latitude,
+    ci.longitude,
+    COUNT(DISTINCT f.race_key)                       AS races_held,
+    MAX(r.season)                                    AS last_season,
+    COUNT(*)                                         AS result_rows,
+    ROUND(100.0 * SUM(f.is_dnf::INT) / COUNT(*), 1)  AS dnf_rate_pct,
+    ROUND(AVG(f.positions_gained), 2)                AS avg_positions_gained,
+    -- Only ~4% of source rows carry a fastest lap and the flag has_fastest_lap_data says which
+    -- races do at all, so this is a shape-of-the-track indicator (Monza fast, Monaco slow), not a
+    -- like-for-like comparison: it also mixes 33 seasons of regulation changes.
+    ROUND(AVG(f.fastest_lap_speed_kph), 1)           AS avg_fastest_lap_kph
+FROM fact_race_result f
+JOIN dim_race    r  ON r.race_key     = f.race_key
+JOIN dim_circuit ci ON ci.circuit_key = f.circuit_key
+WHERE r.season <> -1
+GROUP BY ci.circuit_key, ci.name, ci.country, ci.latitude, ci.longitude;
+
+COMMENT ON VIEW v_circuit_profile IS 'Grain: one row per circuit. The named query that earns dim_circuit. No first_season: it would be left-censored at 1994 for every long-standing circuit, the same defect that dropped debut_season from dim_driver.';

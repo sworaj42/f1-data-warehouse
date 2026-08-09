@@ -1,65 +1,101 @@
-"""Page 2 -- across all 33 seasons.
+"""Page 3 -- the whole 33 seasons at once: reliability, competitiveness, and the tracks.
 
-Where page 1 asks "what happened in this season?", this page asks the questions
-that only 33 seasons of loaded history can answer. Both figures are the argument
-for keeping the OLTP faithful back to 1994 rather than truncating it to a
-comparable modern window.
+This is the page the warehouse was built for. Every figure on it spans 1994-2026, which is only
+possible because each one counts a load-time BOOLEAN FLAG rather than a points total: the scoring
+system changed four times in that window, so anything measured in points compares nothing across
+it. Wins, retirements and finishing positions mean the same in every season.
 
-No KPI row here, so each chart gets more height than on page 1.
+The season-range filter scopes the two trend figures. The circuit figures at the bottom are
+deliberately outside it, and say so -- a per-circuit rate needs every season it can get before it
+stops being noise.
 """
-import pathlib
-import sys
-
 import streamlit as st
 
-# app.py already puts dashboard/ on the path, but repeating it here keeps this
-# screen runnable on its own -- which is what makes it testable with AppTest.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+import db
+import theme
+from charts import circuits, competitiveness, kpis, reliability
 
-import db                                        # noqa: E402
-import layout                                    # noqa: E402
-from charts import reliability, rolling_form     # noqa: E402
+st.markdown("## Eras & trends")
 
-layout.compact()
-filter_col = layout.page_header("Eras & Form")
+kpi = db.season_kpis()
+comp = db.season_competitiveness()
+first, last = int(kpi["season"].min()), int(kpi["season"].max())
 
-kpi_df = db.season_kpis()
-lo, hi = int(kpi_df["season"].min()), int(kpi_df["season"].max())
-form_df = db.driver_rolling_form()
+with st.sidebar:
+    st.markdown("#### Filters")
+    span = st.slider("Seasons", min_value=first, max_value=last, value=(first, last),
+                     help="Scopes the reliability and competitiveness figures. The circuit "
+                          "figures below use all seasons.")
 
-# Offer the drivers with the most starts first: a multiselect over all 177
-# participating drivers, alphabetical, is unusable.
-by_starts = form_df["driver_name"].value_counts().index.tolist()
-
-with filter_col.popover("Filters", icon=":material/tune:", width="stretch"):
-    season_range = st.slider("Seasons", lo, hi, (lo, hi))
-    drivers = st.multiselect(
-        "Drivers", by_starts, default=by_starts[:3],
-        help="Ordered by career starts within 1994-2026.",
-    )
 st.caption(
-    f"{lo}-{hi} · {len(by_starts)} participating drivers · outcomes counted as status "
-    "groups, not points, which is what makes them comparable across eras."
+    f"Seasons {span[0]}–{span[1]}. Every measure here counts a boolean flag — a retirement, a "
+    "win, a classified finish — so it is comparable across all 33 seasons. Nothing on this page "
+    "is measured in points, because points are not."
 )
 
-st.subheader(
-    "Reliability trend",
-    help="Share of each status group by season. Readable only because dim_status collapses "
-         "109 distinct finishing-status strings into 5 groups at load time. Comparable across "
-         "eras because it counts statuses, not points. Runs 1-2 points above the DNF-rate KPI: "
-         "that card counts cars with no finishing position, this counts retirements, and a car "
-         "retiring after 90% distance is still classified.",
-)
-reliability.render(db.reliability_trend(), season_range)
+kpis.era_cards(kpi, comp, span)
 
-st.subheader(
-    "Driver rolling form",
-    help="Five-race moving average of finishing position, ordered by date so form carries "
-         "across the winter break instead of resetting each January. finish_position is NULL "
-         "for a DNF and AVG skips it, so windows resting on fewer than five classified races "
-         "are drawn faded -- the average is correct, it just carries less evidence.",
+st.write("")
+with theme.card("reliability"):
+    theme.section(
+        "How every car ended its race",
+        "Share of all results by outcome, per season. This is the single largest change in the "
+        "data: the mid-1990s field failed to finish about 46% of the time, the 2020s field about "
+        "13%. Cool = the car came home, warm = it did not. The five groups collapse 109 distinct "
+        "source status strings, done once at load time in dim_status.\n\n"
+        "Two caveats the figure marks rather than hides. **From 2023 the source stops reporting "
+        "why a car retired** and retirements collapse into 'Other' — 73 results carried a cause "
+        "in 2022 and none did in 2024 — so the mechanical and accident bands ending is a "
+        "reporting change, not cars that stopped breaking. The total retirement share is still "
+        "sound across it. And 'did not finish' is not the same measure as 'retired': roughly 250 "
+        "cars in scope stopped on track but had covered enough distance to stay classified.",
+    )
+    figure = reliability.render(db.reliability_trend(), span)
+    if figure is not None:
+        theme.chart(figure, key="reliability")
+
+st.write("")
+left, right = st.columns(2, gap="medium")
+
+with left:
+    with theme.card("dominance"):
+        theme.section(
+            "How dominant was the best team?",
+            "Share of each season's races won by its most successful constructor. Measured in "
+            "wins, not points, so it compares across every scoring era. The dashed line is half "
+            "the season: above it, one team won more races than the rest of the grid combined.",
+        )
+        figure = competitiveness.dominance(comp, span)
+        if figure is not None:
+            theme.chart(figure, key="dominance")
+
+with right:
+    with theme.card("winners"):
+        theme.section(
+            "How many different winners?",
+            "Distinct race winners and distinct winning teams per season. Both are counts of the "
+            "same kind, so they share one axis — two scales on one plot would invent a "
+            "relationship between them.",
+        )
+        figure = competitiveness.winners(kpi, comp, span)
+        if figure is not None:
+            theme.chart(figure, key="winners")
+
+st.write("")
+theme.section(
+    "Circuit character",
+    f"All {last - first + 1} seasons, not the range selected above — a per-circuit rate needs "
+    f"every race it can get. Limited to circuits that have held at least {circuits.MIN_RACES} of "
+    "them. Sorted by attrition in both panels. Places gained is in the tooltip but not plotted: "
+    "at circuit grain it measures attrition, not overtaking — Monaco leads it because a third of "
+    "the field retires there and everyone still running inherits the places.",
 )
-if drivers:
-    rolling_form.render(form_df, drivers, season_range)
-else:
-    st.info("Pick at least one driver in Filters.")
+attrition, speed = circuits.render(db.circuit_profile())
+if attrition is not None:
+    left, right = st.columns(2, gap="medium")
+    with left:
+        with theme.card("circuit_attrition"):
+            theme.chart(attrition, key="circuit_attrition")
+    with right:
+        with theme.card("circuit_speed"):
+            theme.chart(speed, key="circuit_speed")
