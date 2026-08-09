@@ -18,9 +18,19 @@ that shape is the whole point.
 |---|---|---|
 | `oltp_erd.png` | `f1_prod` — 3NF, 7 tables: reference, event, transaction | slides, print |
 | `olap_star.png` | `f1_dw` — 6 dimensions + 2 facts, fact tables in red | slides, print |
+| `dashboard_1_season.png` | Season report page | root `README.md` |
+| `dashboard_2_drivers.png` | Driver performance page | root `README.md` |
+| `dashboard_3_eras.png` | Eras & trends page | root `README.md` |
 
-Once those stages exist: `airflow_dag.png` (the DAG graph from the Airflow UI) and
-`dashboard.png` (the Streamlit dashboard).
+Still to come: `airflow_dag.png`, the DAG graph from the Airflow UI.
+
+## Regenerating the dashboard screenshots
+
+Start the dashboard, then capture each page **at its full height rather than at the viewport
+height**. Streamlit scrolls an inner container, so an ordinary full-page capture records only the
+first screen. Measure `document.querySelector('[data-testid="stMain"]').scrollHeight`, reopen the
+browser at that height, and screenshot — 1512px wide keeps the two-column rows side by side, which
+is how the pages are meant to be read.
 
 ## Regenerating the ER diagrams
 
