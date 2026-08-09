@@ -18,6 +18,23 @@ same code runs from a script and from a task.
 CONNECTIONS come from Airflow, not from .env. f1_postgres runs in its own compose
 stack on the host, so the conn ids below resolve through host.docker.internal --
 see docker-compose.airflow.yml. The DAG never reads POSTGRES_HOST.
+
+THIS DAG HAS NO CLOCK (schedule=None). f1_api_to_oltp triggers it once its own
+check_oltp gate is green, so it runs exactly when -- and only when -- validated new
+OLTP data exists.
+
+It used to be @daily, which was wrong three ways. The only writer to f1_prod is a
+@weekly DAG, so six runs in seven could not have data (and were not free: every run
+rebuilds all five dimensions at full scope and re-reads the whole qualifying set).
+@weekly is 0 0 * * 0 and @daily is 0 0 * * *, so on the one day that mattered both
+DAGs fired at the same instant and this one could read f1_prod mid-load. And losing
+that race meant waiting until the next Sunday -- up to eight days stale from a DAG
+running seven times a week. Being triggered by the producer, instead of guessing at
+it with clock arithmetic, fixes all three at once.
+
+schedule=None means NO CLOCK, not no triggering. Trigger it by hand whenever the
+warehouse should catch up -- with full_reload if wanted -- which is what a
+scripts/backfill.py load needs, since that writes f1_prod directly without Airflow.
 """
 from datetime import datetime, timedelta
 
@@ -40,7 +57,9 @@ with DAG(
     dag_id="f1_oltp_to_dw",
     description="Load the F1 star schema in f1_dw from the 3NF f1_prod database",
     default_args={"retries": 2, "retry_delay": timedelta(minutes=5)},
-    schedule="@daily",
+    # Triggered by f1_api_to_oltp, not by a clock -- see the module docstring for
+    # what @daily got wrong. Manual triggering still works.
+    schedule=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
     params={

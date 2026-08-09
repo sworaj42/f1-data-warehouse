@@ -19,10 +19,17 @@ stay pre-loaded as stable ground, and the live demo is f1_oltp_to_dw.
 
 Task order is forced by foreign keys -- reference -> races -> results/qualifying --
 the same order scripts/backfill.py uses.
+
+THIS DAG STARTS f1_oltp_to_dw. Once check_oltp is green, trigger_dw fires the
+warehouse DAG, which has no schedule of its own -- so the warehouse loads when
+validated new OLTP data exists rather than on a clock. Set trigger_dw=false to load
+f1_prod without touching the warehouse; f1_oltp_to_dw can still be triggered by hand
+at any time.
 """
 from datetime import datetime, timedelta
 
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sdk import DAG, Param, task
 
 from etl import config
@@ -65,6 +72,16 @@ with DAG(
                 "still being run. Closed seasons are immutable and stay cached either way. "
                 "Off means a guaranteed zero-request run; on, a page whose refetch fails "
                 "falls back to its cached copy, so an offline run still succeeds."
+            ),
+        ),
+        "trigger_dw": Param(
+            True,
+            type="boolean",
+            description=(
+                "Trigger f1_oltp_to_dw once the OLTP load has passed check_oltp. Off loads "
+                "the OLTP database without touching the warehouse -- useful when loading "
+                "several seasons back to back, or when demoing this DAG on its own. "
+                "f1_oltp_to_dw can always be triggered manually regardless."
             ),
         ),
     },
@@ -183,6 +200,9 @@ with DAG(
         Zero tolerance is deliberate. A skipped row means a driver, circuit or race
         the reference tables have never heard of -- stale cached reference JSON, or a
         parse regression. Neither is ever acceptable, so there is no threshold to tune.
+
+        This task passing is what allows trigger_dw to run, so a red gate here stops
+        the warehouse DAG from ever starting.
         """
         conn = PostgresHook(CONN_ID).get_conn()
         try:
@@ -222,6 +242,30 @@ with DAG(
         finally:
             conn.close()
 
+    @task.short_circuit
+    def should_trigger_dw(counts, **context):
+        """The trigger_dw param, as a gate.
+
+        Returning False SKIPS everything downstream, which is how a run loads
+        f1_prod without touching the warehouse. Downstream of check_oltp, so a red
+        gate means this never runs and the warehouse DAG is never started -- bad
+        OLTP data cannot reach f1_dw.
+        """
+        if not context["params"]["trigger_dw"]:
+            print("trigger_dw=false: f1_prod updated, NOT triggering f1_oltp_to_dw. "
+                  "Run it by hand when the warehouse should catch up.")
+            return False
+        print("f1_prod validated, triggering f1_oltp_to_dw ->", counts)
+        return True
+
+    # An explicit DAG-to-DAG trigger. wait_for_completion defaults to False, which is
+    # what we want: this DAG's job is done once f1_prod is loaded and validated, and
+    # it should not sit occupied watching the warehouse load.
+    trigger_dw = TriggerDagRunOperator(
+        task_id="trigger_dw",
+        trigger_dag_id="f1_oltp_to_dw",
+    )
+
     raw = extract_to_raw()
     reference = load_reference()
     races = load_races()
@@ -231,5 +275,6 @@ with DAG(
     # Passing the skip counts makes the gate a real data dependency, not just an
     # ordering one -- check_oltp cannot run without the numbers it has to judge.
     checked = check_oltp(skipped=[races, results, qualifying])
+    gated = should_trigger_dw(counts=checked)
 
-    raw >> reference >> races >> [results, qualifying] >> checked
+    raw >> reference >> races >> [results, qualifying] >> checked >> gated >> trigger_dw
