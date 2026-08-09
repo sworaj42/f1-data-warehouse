@@ -24,6 +24,26 @@ that shape is the whole point.
 
 Still to come: `airflow_dag.png`, the DAG graph from the Airflow UI.
 
+## Regenerating `architecture_f1.png`
+
+Unlike the ER diagrams, this one is **not** a DBeaver export — it is hand-written SVG in
+`architecture_f1.html`, so the source is editable text and the PNG is a render of it. Edit the
+HTML, then re-export with headless Chrome at a 2x device scale, which is what makes the 2400x1350
+SVG land as a 4800x2700 PNG:
+
+```bash
+~/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-mac-arm64/chrome-headless-shell \
+  --headless --disable-gpu --hide-scrollbars \
+  --window-size=2400,1350 --force-device-scale-factor=2 --virtual-time-budget=3000 \
+  --screenshot=diagrams/architecture_f1.png \
+  "file://$PWD/diagrams/architecture_f1.html"
+```
+
+**Check the label backing rects after any text change.** Each DAG title sits on its own
+`<rect>` whose width is hard-coded — SVG cannot auto-size a box to its text — so lengthening a
+label without widening the rect leaves the text hanging off the end of its own background. Verify
+by looking at the rendered PNG, not by reading the SVG.
+
 ## Regenerating the dashboard screenshots
 
 Start the dashboard, then capture each page **at its full height rather than at the viewport

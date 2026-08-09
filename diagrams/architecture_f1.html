@@ -1,0 +1,141 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;padding:0;background:#15151E;}
+  svg{display:block;}
+  .t   {font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;fill:#fff;}
+  .mono{font-family:'SF Mono',Menlo,Consolas,monospace;}
+  .ttl {font-size:44px;font-weight:700;letter-spacing:.5px;}
+  .sub {font-size:22px;fill:#9A9AA8;}
+  .nm  {font-size:27px;font-weight:700;}
+  .nsub{font-size:19px;fill:#C3C3CF;}
+  .elab{font-size:19px;fill:#E8E8F0;}
+  .elabb{font-size:19px;font-weight:700;fill:#fff;}
+  .dag {font-size:21px;font-weight:700;fill:#E10600;letter-spacing:.6px;}
+  .noteh{font-size:19px;font-weight:700;fill:#FFC300;letter-spacing:.5px;}
+  .note{font-size:18px;fill:#B8B8C6;}
+  .leg {font-size:18px;fill:#9A9AA8;}
+</style></head><body>
+<svg width="2400" height="1350" viewBox="0 0 2400 1350" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#E10600"/>
+    </marker>
+    <marker id="arg" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#8A8A98"/>
+    </marker>
+  </defs>
+
+  <rect width="2400" height="1350" fill="#15151E"/>
+  <rect x="0" y="0" width="2400" height="7" fill="#E10600"/>
+
+  <text class="t ttl" x="60" y="92">F1 Data Warehouse — Data Flow Architecture</text>
+  <text class="t sub" x="62" y="132">33 seasons (1994–2026) · 613 races · 13,028 results · 11,212 qualifying · 6 dimensions · 2 facts</text>
+
+  <!-- DAG containers -->
+  <rect x="470" y="285" width="850" height="430" rx="14" fill="#1C1C26" stroke="#E10600" stroke-width="2.5"/>
+  <rect x="452" y="264" width="548" height="42" rx="8" fill="#15151E"/>
+  <text class="t dag mono" x="472" y="293">f1_api_to_oltp — Airflow DAG · @weekly</text>
+
+  <rect x="1530" y="285" width="370" height="430" rx="14" fill="#1C1C26" stroke="#E10600" stroke-width="2.5"/>
+  <rect x="1512" y="264" width="700" height="42" rx="8" fill="#15151E"/>
+  <text class="t dag mono" x="1532" y="293">f1_oltp_to_dw — Airflow DAG · triggered by DAG 1</text>
+
+  <!-- 1. API -->
+  <rect x="40" y="415" width="290" height="170" rx="85" fill="#2B2B36" stroke="#8A8A98" stroke-width="2.5"/>
+  <text class="t nm"   x="185" y="480" text-anchor="middle">JOLPICA-F1 API</text>
+  <text class="t nsub" x="185" y="513" text-anchor="middle">REST · community-run</text>
+  <text class="t nsub" x="185" y="540" text-anchor="middle">free · rate-limited</text>
+
+  <!-- 2. landing zone -->
+  <rect x="530" y="415" width="290" height="170" rx="10" fill="#2E2600" stroke="#FFC300" stroke-width="3.5" stroke-dasharray="11 7"/>
+  <text class="t nm mono" x="675" y="482" text-anchor="middle" fill="#FFC300">data/raw/</text>
+  <text class="t nsub mono" x="675" y="516" text-anchor="middle" fill="#E0C36A">page_*.json</text>
+  <text class="t nsub" x="675" y="546" text-anchor="middle" fill="#E0C36A">landing zone</text>
+
+  <!-- 3. f1_prod cylinder -->
+  <ellipse cx="1140" cy="570" rx="145" ry="26" fill="#1A1A24" stroke="#E10600" stroke-width="3"/>
+  <rect x="995" y="410" width="290" height="160" fill="#1A1A24"/>
+  <line x1="995" y1="410" x2="995" y2="570" stroke="#E10600" stroke-width="3"/>
+  <line x1="1285" y1="410" x2="1285" y2="570" stroke="#E10600" stroke-width="3"/>
+  <ellipse cx="1140" cy="410" rx="145" ry="26" fill="#22222E" stroke="#E10600" stroke-width="3"/>
+  <text class="t nm mono" x="1140" y="470" text-anchor="middle">f1_prod</text>
+  <text class="t nsub" x="1140" y="503" text-anchor="middle">3NF · 7 tables</text>
+  <text class="t nsub" x="1140" y="531" text-anchor="middle">13,028 results</text>
+
+  <!-- 4. f1_dw cylinder -->
+  <ellipse cx="1715" cy="570" rx="145" ry="26" fill="#1A1A24" stroke="#E10600" stroke-width="3"/>
+  <rect x="1570" y="410" width="290" height="160" fill="#1A1A24"/>
+  <line x1="1570" y1="410" x2="1570" y2="570" stroke="#E10600" stroke-width="3"/>
+  <line x1="1860" y1="410" x2="1860" y2="570" stroke="#E10600" stroke-width="3"/>
+  <ellipse cx="1715" cy="410" rx="145" ry="26" fill="#22222E" stroke="#E10600" stroke-width="3"/>
+  <text class="t nm mono" x="1715" y="470" text-anchor="middle">f1_dw</text>
+  <text class="t nsub" x="1715" y="503" text-anchor="middle">star schema</text>
+  <text class="t nsub" x="1715" y="531" text-anchor="middle">6 dims + 2 facts</text>
+
+  <!-- 5. dashboard -->
+  <rect x="2075" y="415" width="285" height="170" rx="85" fill="#2B2B36" stroke="#8A8A98" stroke-width="2.5"/>
+  <text class="t nm"   x="2217" y="480" text-anchor="middle">STREAMLIT</text>
+  <text class="t nsub" x="2217" y="513" text-anchor="middle">3 pages</text>
+  <text class="t nsub" x="2217" y="540" text-anchor="middle">10 SQL views</text>
+
+  <!-- arrows -->
+  <line x1="332" y1="500" x2="520" y2="500" stroke="#E10600" stroke-width="3.5" marker-end="url(#ar)"/>
+  <rect x="379" y="352" width="96" height="30" rx="5" fill="#E10600"/>
+  <text class="t elabb" x="427" y="374" text-anchor="middle" font-size="17">NETWORK</text>
+  <text class="t elab" x="426" y="414" text-anchor="middle">paginate · 4 req/s</text>
+  <text class="t elab" x="426" y="440" text-anchor="middle">retry · land to disk</text>
+
+  <line x1="822" y1="500" x2="985" y2="500" stroke="#8A8A98" stroke-width="3.5" marker-end="url(#arg)"/>
+  <text class="t elab" x="900" y="428" text-anchor="middle" font-size="18">parse · clean</text>
+  <text class="t elab" x="900" y="452" text-anchor="middle" font-size="18">dedup · upsert</text>
+
+  <line x1="1288" y1="500" x2="1560" y2="500" stroke="#8A8A98" stroke-width="3.5" marker-end="url(#arg)"/>
+  <text class="t elab"  x="1424" y="414" text-anchor="middle">surrogate keys</text>
+  <text class="t elab"  x="1424" y="440" text-anchor="middle">derived flags</text>
+  <text class="t elabb" x="1424" y="468" text-anchor="middle" fill="#E10600">QUALITY GATE</text>
+
+  <line x1="1862" y1="500" x2="2065" y2="500" stroke="#8A8A98" stroke-width="3.5" marker-end="url(#arg)"/>
+  <text class="t elab mono" x="1963" y="440" text-anchor="middle" font-size="17">SELECT * FROM v_*</text>
+  <text class="t elab" x="1963" y="466" text-anchor="middle">cached</text>
+
+  <!-- annotation: landing zone -->
+  <line x1="675" y1="592" x2="675" y2="800" stroke="#FFC300" stroke-width="2" stroke-dasharray="6 6"/>
+  <rect x="330" y="800" width="690" height="150" rx="10" fill="#1C1C26" stroke="#FFC300" stroke-width="2"/>
+  <text class="t noteh" x="360" y="838">THE NETWORK BOUNDARY</text>
+  <text class="t note"  x="360" y="872">Every response is written to disk before anything parses it.</text>
+  <text class="t note"  x="360" y="900">Nothing downstream makes an HTTP call — parse, load and the</text>
+  <text class="t note"  x="360" y="928">whole warehouse run offline. A re-run costs zero requests.</text>
+
+  <!-- annotation: two databases -->
+  <line x1="1424" y1="592" x2="1424" y2="800" stroke="#8A8A98" stroke-width="2" stroke-dasharray="6 6"/>
+  <rect x="1120" y="800" width="680" height="150" rx="10" fill="#1C1C26" stroke="#6A6A78" stroke-width="2"/>
+  <text class="t noteh" x="1150" y="838" fill="#fff">TWO SEPARATE DATABASES</text>
+  <text class="t note"  x="1150" y="872">Postgres cannot join across databases, so surrogate keys are</text>
+  <text class="t note"  x="1150" y="900">resolved in the ETL rather than in SQL. Dimension attributes</text>
+  <text class="t note"  x="1150" y="928">are still derived in SQL, on the source side.</text>
+
+  <!-- volume note -->
+  <rect x="1900" y="800" width="440" height="150" rx="10" fill="#1C1C26" stroke="#6A6A78" stroke-width="2"/>
+  <text class="t noteh" x="1930" y="838" fill="#fff">COST</text>
+  <text class="t note"  x="1930" y="872">Full backfill ≈ 110–140 requests.</text>
+  <text class="t note"  x="1930" y="900">Client-side limit: 4/sec and 500/hour,</text>
+  <text class="t note"  x="1930" y="928">enforced before sending, not after 429.</text>
+
+  <!-- legend -->
+  <line x1="60" y1="1035" x2="2340" y2="1035" stroke="#2E2E3A" stroke-width="2"/>
+  <rect x="60" y="1075" width="44" height="30" rx="15" fill="#2B2B36" stroke="#8A8A98" stroke-width="2"/>
+  <text class="t leg" x="120" y="1096">external system</text>
+  <rect x="330" y="1075" width="44" height="30" rx="5" fill="#2E2600" stroke="#FFC300" stroke-width="2.5" stroke-dasharray="7 5"/>
+  <text class="t leg" x="390" y="1096">file landing zone</text>
+  <rect x="610" y="1075" width="44" height="30" rx="5" fill="#1A1A24" stroke="#E10600" stroke-width="2.5"/>
+  <text class="t leg" x="670" y="1096">PostgreSQL database</text>
+  <rect x="950" y="1075" width="44" height="30" rx="6" fill="#1C1C26" stroke="#E10600" stroke-width="2.5"/>
+  <text class="t leg" x="1010" y="1096">Airflow DAG boundary</text>
+  <line x1="1310" y1="1090" x2="1370" y2="1090" stroke="#E10600" stroke-width="3.5" marker-end="url(#ar)"/>
+  <text class="t leg" x="1390" y="1096">crosses the network</text>
+  <line x1="1660" y1="1090" x2="1720" y2="1090" stroke="#8A8A98" stroke-width="3.5" marker-end="url(#arg)"/>
+  <text class="t leg" x="1740" y="1096">local — disk or database</text>
+
+  <text class="t leg mono" x="2340" y="1300" text-anchor="end" fill="#5A5A68">Python 3.13 · PostgreSQL 16 · Airflow 3.3 · Streamlit · Docker Compose</text>
+</svg>
+</body></html>
