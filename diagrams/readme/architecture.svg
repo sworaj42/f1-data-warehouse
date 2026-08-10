@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 95 1600 525" width="1600" height="525" role="img" aria-label="Pipeline architecture: Jolpica API to data/raw to f1_prod to f1_dw to SQL views to Streamlit, with DAG 1 spanning the API through f1_prod and DAG 2 spanning f1_prod to f1_dw">
+  <defs>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 1 L 11 6 L 0 11 z" fill="#8a8a84"/>
+    </marker>
+    <style>
+      .t   { font-family: "Inter","Helvetica Neue",Helvetica,Arial,sans-serif; }
+      .name{ font-size: 24px; font-weight: 700; fill: #f2f2ee; }
+      .sub { font-size: 15px; fill: #a3a39c; }
+      .edge{ font-size: 14px; fill: #8a8a84; }
+      .note{ font-size: 15px; font-weight: 600; fill: #d99a2b; letter-spacing: .04em; }
+      .note2{ font-size: 15px; font-weight: 600; fill: #4caf7d; letter-spacing: .04em; }
+      .dag { font-size: 17px; font-weight: 700; fill: #f2f2ee; }
+      .dagsub { font-size: 15px; fill: #a3a39c; }
+      .foot{ font-size: 16px; fill: #a3a39c; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="620" fill="#0d0d0d"/>
+
+  <!-- network boundary -->
+  <line x1="265" y1="150" x2="265" y2="350" stroke="#d99a2b" stroke-width="2" stroke-dasharray="7 6"/>
+  <text class="t note" x="265" y="140" text-anchor="middle">NETWORK BOUNDARY</text>
+  <text class="t note2" x="665" y="140" text-anchor="middle">VALIDATED HANDOFF</text>
+
+  <!-- nodes -->
+  <g>
+    <rect x="30" y="200" width="190" height="120" rx="14" fill="#26262a" stroke="#6b6b70" stroke-width="2"/>
+    <text class="t name" x="125" y="252" text-anchor="middle">Jolpica API</text>
+    <text class="t sub"  x="125" y="278" text-anchor="middle">paginated,</text>
+    <text class="t sub"  x="125" y="298" text-anchor="middle">rate limited</text>
+
+    <rect x="300" y="200" width="190" height="120" rx="14" fill="#3a2c10" stroke="#d99a2b" stroke-width="2" stroke-dasharray="8 6"/>
+    <text class="t name" x="395" y="252" text-anchor="middle">data/raw/</text>
+    <text class="t sub"  x="395" y="278" text-anchor="middle">cached JSON,</text>
+    <text class="t sub"  x="395" y="298" text-anchor="middle">replayable offline</text>
+
+    <rect x="570" y="200" width="190" height="120" rx="14" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t name" x="665" y="252" text-anchor="middle">f1_prod</text>
+    <text class="t sub"  x="665" y="278" text-anchor="middle">3NF OLTP,</text>
+    <text class="t sub"  x="665" y="298" text-anchor="middle">7 tables</text>
+
+    <rect x="840" y="200" width="190" height="120" rx="14" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t name" x="935" y="252" text-anchor="middle">f1_dw</text>
+    <text class="t sub"  x="935" y="278" text-anchor="middle">6 dimensions,</text>
+    <text class="t sub"  x="935" y="298" text-anchor="middle">2 fact tables</text>
+
+    <rect x="1110" y="200" width="190" height="120" rx="14" fill="#16352a" stroke="#4caf7d" stroke-width="2"/>
+    <text class="t name" x="1205" y="252" text-anchor="middle">SQL views</text>
+    <text class="t sub"  x="1205" y="278" text-anchor="middle">10 analytical</text>
+    <text class="t sub"  x="1205" y="298" text-anchor="middle">definitions</text>
+
+    <rect x="1380" y="200" width="190" height="120" rx="14" fill="#26262a" stroke="#6b6b70" stroke-width="2"/>
+    <text class="t name" x="1475" y="252" text-anchor="middle">Streamlit</text>
+    <text class="t sub"  x="1475" y="278" text-anchor="middle">3 pages,</text>
+    <text class="t sub"  x="1475" y="298" text-anchor="middle">cached reads</text>
+  </g>
+
+  <!-- edges -->
+  <g stroke="#8a8a84" stroke-width="2.5" marker-end="url(#arrow)">
+    <line x1="224" y1="262" x2="292" y2="262"/>
+    <line x1="494" y1="262" x2="562" y2="262"/>
+    <line x1="764" y1="262" x2="832" y2="262"/>
+    <line x1="1034" y1="262" x2="1102" y2="262"/>
+    <line x1="1304" y1="262" x2="1372" y2="262"/>
+  </g>
+  <g class="t edge" text-anchor="middle">
+    <text x="528" y="220">parse</text>
+    <text x="528" y="238">upsert</text>
+    <text x="798" y="220">quality</text>
+    <text x="798" y="238">gate</text>
+    <text x="1068" y="228">define</text>
+    <text x="1338" y="228">read</text>
+  </g>
+
+  <!-- DAG spans -->
+  <rect x="30" y="380" width="730" height="60" rx="12" fill="#151519" stroke="#6b6b70" stroke-width="1.5" stroke-dasharray="8 6"/>
+  <text class="t dag"    x="52" y="408">DAG 1 · f1_api_to_oltp</text>
+  <text class="t dagsub" x="52" y="429">weekly · current season by default · ends on the check_oltp gate</text>
+
+  <rect x="570" y="460" width="460" height="60" rx="12" fill="#151519" stroke="#6b6b70" stroke-width="1.5" stroke-dasharray="8 6"/>
+  <text class="t dag"    x="592" y="488">DAG 2 · f1_oltp_to_dw</text>
+  <text class="t dagsub" x="592" y="509">schedule=None · triggered by DAG 1, or by hand</text>
+
+  <text class="t foot" x="30" y="570">Incremental by default: independent fact watermarks with a 30-day lookback. full_reload=true widens the fact extract to all history.</text>
+  <text class="t foot" x="30" y="596">Dimensions always load at full scope. Everything downstream of data/raw/ runs offline.</text>
+</svg>

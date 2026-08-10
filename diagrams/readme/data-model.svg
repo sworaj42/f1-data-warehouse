@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 720" width="1600" height="720" role="img" aria-label="Fact constellation: fact_race_result and fact_qualifying share five conformed dimensions, dim_date, dim_race, dim_driver, dim_constructor and dim_circuit, while dim_status joins only to fact_race_result">
+  <defs>
+    <style>
+      .t    { font-family: "Inter","Helvetica Neue",Helvetica,Arial,sans-serif; }
+      .fact { font-size: 26px; font-weight: 700; fill: #f2f2ee; }
+      .dim  { font-size: 21px; font-weight: 700; fill: #f2f2ee; }
+      .sub  { font-size: 15px; fill: #a3a39c; }
+      .cap  { font-size: 17px; fill: #a3a39c; }
+      .hdr  { font-size: 15px; font-weight: 600; letter-spacing: .06em; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="720" fill="#0d0d0d"/>
+
+  <!-- joins to both facts -->
+  <g stroke="#5c5c60" stroke-width="2">
+    <line x1="650" y1="98"  x2="360" y2="280"/>
+    <line x1="650" y1="190" x2="360" y2="280"/>
+    <line x1="650" y1="282" x2="360" y2="280"/>
+    <line x1="650" y1="374" x2="360" y2="280"/>
+    <line x1="650" y1="466" x2="360" y2="280"/>
+    <line x1="950" y1="98"  x2="1240" y2="280"/>
+    <line x1="950" y1="190" x2="1240" y2="280"/>
+    <line x1="950" y1="282" x2="1240" y2="280"/>
+    <line x1="950" y1="374" x2="1240" y2="280"/>
+    <line x1="950" y1="466" x2="1240" y2="280"/>
+  </g>
+  <!-- dim_status joins the race fact only -->
+  <line x1="650" y1="598" x2="360" y2="330" stroke="#922b21" stroke-width="2.5"/>
+
+  <!-- facts -->
+  <rect x="60" y="205" width="300" height="150" rx="14" fill="#4a1d18" stroke="#c0392b" stroke-width="2.5"/>
+  <text class="t hdr"  x="210" y="238" text-anchor="middle" fill="#e2857a">FACT</text>
+  <text class="t fact" x="210" y="275" text-anchor="middle">fact_race_result</text>
+  <text class="t sub"  x="210" y="305" text-anchor="middle">13,028 rows</text>
+  <text class="t sub"  x="210" y="330" text-anchor="middle">points, positions, outcome flags</text>
+
+  <rect x="1240" y="205" width="300" height="150" rx="14" fill="#4a1d18" stroke="#c0392b" stroke-width="2.5"/>
+  <text class="t hdr"  x="1390" y="238" text-anchor="middle" fill="#e2857a">FACT</text>
+  <text class="t fact" x="1390" y="275" text-anchor="middle">fact_qualifying</text>
+  <text class="t sub"  x="1390" y="305" text-anchor="middle">11,212 rows</text>
+  <text class="t sub"  x="1390" y="330" text-anchor="middle">session times, gap to pole</text>
+
+  <!-- conformed dimensions -->
+  <text class="t hdr" x="800" y="40" text-anchor="middle" fill="#7fb0e8">FIVE CONFORMED DIMENSIONS, SHARED BY BOTH FACTS</text>
+  <g>
+    <rect x="650" y="60" width="300" height="76" rx="12" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t dim" x="800" y="94"  text-anchor="middle">dim_date</text>
+    <text class="t sub" x="800" y="118" text-anchor="middle">calendar attributes</text>
+
+    <rect x="650" y="152" width="300" height="76" rx="12" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t dim" x="800" y="186" text-anchor="middle">dim_race</text>
+    <text class="t sub" x="800" y="210" text-anchor="middle">season, round, points era</text>
+
+    <rect x="650" y="244" width="300" height="76" rx="12" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t dim" x="800" y="278" text-anchor="middle">dim_driver</text>
+    <text class="t sub" x="800" y="302" text-anchor="middle">identity and nationality</text>
+
+    <rect x="650" y="336" width="300" height="76" rx="12" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t dim" x="800" y="370" text-anchor="middle">dim_constructor</text>
+    <text class="t sub" x="800" y="394" text-anchor="middle">team and last season</text>
+
+    <rect x="650" y="428" width="300" height="76" rx="12" fill="#14304f" stroke="#3987e5" stroke-width="2"/>
+    <text class="t dim" x="800" y="462" text-anchor="middle">dim_circuit</text>
+    <text class="t sub" x="800" y="486" text-anchor="middle">venue and location</text>
+  </g>
+
+  <!-- race-only dimension -->
+  <rect x="650" y="560" width="300" height="76" rx="12" fill="#2b1a18" stroke="#922b21" stroke-width="2"/>
+  <text class="t dim" x="800" y="594" text-anchor="middle">dim_status</text>
+  <text class="t sub" x="800" y="618" text-anchor="middle">finishing status, race fact only</text>
+  <text class="t sub" x="430" y="530" text-anchor="middle">qualifying has no</text>
+  <text class="t sub" x="430" y="552" text-anchor="middle">finishing status</text>
+
+  <text class="t cap" x="800" y="682" text-anchor="middle">Shared grain: one driver per race. Both facts declare PRIMARY KEY (race_key, driver_key), so a duplicate load is rejected by the database.</text>
+</svg>

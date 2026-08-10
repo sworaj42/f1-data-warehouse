@@ -1,28 +1,32 @@
 # Diagrams
 
-Visual documentation for the warehouse. Everything the root `README.md` needs is Mermaid —
-architecture, the star constellation, the pipeline stages, and both full ER diagrams with columns,
-key markers and cardinality. Mermaid renders natively on GitHub, lives in version control, and is
-written from the DDL, so it cannot silently drift out of sync with `sql/oltp` and `sql/olap`.
+Visual documentation for the warehouse.
 
-The PNG exports here survive for the one thing Mermaid genuinely cannot do: **manual layout.**
-Mermaid auto-arranges, so on a diagram with six dimensions feeding two facts the connectors cross
-through unrelated tables and the radial shape is lost — the star stops looking like a star. A
-hand-arranged DBeaver export is still the better picture for a slide or a printed report, where
-that shape is the whole point.
+`readme/` holds the simplified, hand-written SVGs and the cropped screenshots the root `README.md`
+embeds. They are deliberately small and readable at GitHub width. The full-detail diagrams stay in
+this directory: Mermaid ER diagrams with every column and key marker live in
+`docs/technical-reference.md`, and the DBeaver exports survive for the one thing Mermaid cannot do,
+manual layout. Mermaid auto-arranges, so on a diagram with six dimensions feeding two facts the
+connectors cross through unrelated tables and the radial shape is lost. A hand-arranged export is
+still the better picture for a slide or a printed report, where that shape is the whole point.
 
-(An earlier version of this file blamed column count. That was wrong: Mermaid renders the 20-column
-`fact_race_result` perfectly legibly. Layout control is the real difference.)
-
-| File | What it shows | Still used for |
+| File | What it shows | Used for |
 |---|---|---|
-| `oltp_erd.png` | `f1_prod` — 3NF, 7 tables: reference, event, transaction | slides, print |
-| `olap_star.png` | `f1_dw` — 6 dimensions + 2 facts, fact tables in red | slides, print |
-| `dashboard_1_season.png` | Season report page | root `README.md` |
-| `dashboard_2_drivers.png` | Driver performance page | root `README.md` |
-| `dashboard_3_eras.png` | Eras & trends page | root `README.md` |
+| `readme/architecture.svg` | Simplified pipeline flow with both DAG spans | root `README.md` |
+| `readme/data-model.svg` | Fact constellation: 2 facts, 6 dimensions | root `README.md` |
+| `readme/dashboard-*.png` | 1600px cropped page headers, linked to the full captures | root `README.md` |
+| `oltp_erd.png` | `f1_prod`, 3NF, 7 tables: reference, event, transaction | slides, print, README link |
+| `olap_star.png` | `f1_dw`, 6 dimensions and 2 facts, fact tables in red | slides, print, README link |
+| `dashboard_1_season.png` | Season report page, full height | README crop target |
+| `dashboard_2_drivers.png` | Driver performance page, full height | README crop target |
+| `dashboard_3_eras.png` | Eras & trends page, full height | README crop target |
+| `architecture_f1.png` | Detailed architecture render for slides | slides, print |
 
-Still to come: `airflow_dag.png`, the DAG graph from the Airflow UI.
+## Regenerating the README crops
+
+Capture each page at a 1512x950 viewport with a 2x device scale factor, then crop away the sidebar
+and everything below the first figure and resize to 1600px wide. The crop must keep the page title,
+the KPI row where the page has one, and one representative chart.
 
 ## Regenerating `architecture_f1.png`
 
