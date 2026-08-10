@@ -40,8 +40,8 @@ Coverage runs 1994 to 2026, the 2026 season complete through 26 July.
 One end-to-end pipeline split into two independently rerunnable ETL stages and Airflow DAGs.
 
 <p align="center">
-  <a href="diagrams/architecture_presentation.png">
-    <img src="diagrams/architecture_presentation.png"
+  <a href="diagrams/pipeline_architecture.png">
+    <img src="diagrams/pipeline_architecture.png"
          alt="Pipeline architecture: Jolpica API to data/raw to f1_prod to f1_dw to Streamlit, with DAG 1 covering ingestion and DAG 2 covering the warehouse load"
          width="100%">
   </a>

@@ -12,7 +12,7 @@ still the better picture for a slide or a printed report, where that shape is th
 
 | File | What it shows | Used for |
 |---|---|---|
-| `architecture_presentation.png` | Pipeline flow with both DAG spans and the stage annotations | root `README.md`, slides |
+| `pipeline_architecture.png` | Pipeline flow with both DAG spans and the stage annotations | root `README.md`, slides |
 | `readme/data-model.svg` | Fact constellation: 2 facts, 6 dimensions | root `README.md` |
 | `readme/dashboard-*.png` | 1600px cropped page headers, linked to the full captures | root `README.md` |
 | `oltp_erd.png` | `f1_prod`, 3NF, 7 tables: reference, event, transaction | slides, print, README link |
